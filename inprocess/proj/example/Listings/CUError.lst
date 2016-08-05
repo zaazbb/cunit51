@@ -1,0 +1,266 @@
+C51 COMPILER V9.55   CUERROR                                                               08/05/2016 10:32:30 PAGE 1   
+
+
+C51 COMPILER V9.55, COMPILATION OF MODULE CUERROR
+OBJECT MODULE PLACED IN .\Objects\CUError.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE ..\..\CUnit-2.1-3\CUnit\Sources\Framework\CUError.c LARGE OPTIMIZE(8,SPE
+                    -ED) BROWSE INCDIR(..\..\CUnit-2.1-3\CUnit\Headers;..\..\CUnit-2.1-3\Examples;..\..\src\inc) DEFINE(stdout=0,stderr=0,FIL
+                    -E=char,fprintf=printf,setvbuf,_IONBF=0,exit,EXIT_FAILURE=0,snprintf=sprintf) DEBUG OBJECTEXTEND PRINT(.\Listings\CUError
+                    -.lst) OBJECT(.\Objects\CUError.obj)
+
+line level    source
+
+   1          /*
+   2           *  CUnit - A Unit testing framework library for C.
+   3           *  Copyright (C) 2001       Anil Kumar
+   4           *  Copyright (C) 2004-2006  Anil Kumar, Jerry St.Clair
+   5           *
+   6           *  This library is free software; you can redistribute it and/or
+   7           *  modify it under the terms of the GNU Library General Public
+   8           *  License as published by the Free Software Foundation; either
+   9           *  version 2 of the License, or (at your option) any later version.
+  10           *
+  11           *  This library is distributed in the hope that it will be useful,
+  12           *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  13           *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  14           *  Library General Public License for more details.
+  15           *
+  16           *  You should have received a copy of the GNU Library General Public
+  17           *  License along with this library; if not, write to the Free Software
+  18           *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+  19           */
+  20          
+  21          /*
+  22           *  Error handling code used by CUnit
+  23           *
+  24           *  16-Jul-2004   Created access functions for error code, error action
+  25           *                functions, messages for new error codes. (JDS)
+  26           *
+  27           *  02-May-2006   Added internationalization hooks.  (JDS)
+  28           */
+  29          
+  30          /** @file
+  31           * Error handling functions (implementation).
+  32           */
+  33          /** @addtogroup Framework
+  34           @{
+  35          */
+  36          
+  37          #include <stdio.h>
+  38          #include <stdlib.h>
+  39          
+  40          #include "CUnit_intl.h"
+  41          #include "CUError.h"
+  42          
+  43          /*=================================================================
+  44           *  Global/Static Definitions
+  45           *=================================================================*/
+  46          /** Local variable holding the current error code. */
+  47          static CU_ErrorCode g_error_number = CUE_SUCCESS;
+  48          /** Local variable holding the current error action code. */
+  49          static CU_ErrorAction g_error_action = CUEA_IGNORE;
+  50          
+  51          /*=================================================================
+  52           *  Private function forward declarations
+C51 COMPILER V9.55   CUERROR                                                               08/05/2016 10:32:30 PAGE 2   
+
+  53           *=================================================================*/
+  54          static const char* get_error_desc(CU_ErrorCode error);
+  55          
+  56          #ifdef CUNIT_DO_NOT_DEFINE_UNLESS_BUILDING_TESTS
+              void test_exit(int status);
+              #endif
+  59          
+  60          /*=================================================================
+  61           *  Public API functions
+  62           *=================================================================*/
+  63          void CU_set_error(CU_ErrorCode error)
+  64          {
+  65   1        if ((error != CUE_SUCCESS) && (g_error_action == CUEA_ABORT)) {
+  66   2      #ifndef CUNIT_DO_NOT_DEFINE_UNLESS_BUILDING_TESTS
+  67   2          fprintf(stderr, _("\nAborting due to error #%d: %s\n"),
+  68   2                  (int)error,
+  69   2                  get_error_desc(error));
+  70   2          exit((int)error);
+*** WARNING C275 IN LINE 70 OF ..\..\CUnit-2.1-3\CUnit\Sources\Framework\CUError.c: expression with possibly no effect
+  71   2      #else
+                  test_exit(error);
+              #endif
+  74   2        }
+  75   1      
+  76   1        g_error_number = error;
+  77   1      }
+  78          
+  79          /*------------------------------------------------------------------------*/
+  80          CU_ErrorCode CU_get_error(void)
+  81          {
+  82   1              return g_error_number;
+  83   1      }
+  84          
+  85          /*------------------------------------------------------------------------*/
+  86          const char* CU_get_error_msg(void)
+  87          {
+  88   1              return get_error_desc(g_error_number);
+  89   1      }
+  90          
+  91          /*------------------------------------------------------------------------*/
+  92          void CU_set_error_action(CU_ErrorAction action)
+  93          {
+  94   1        g_error_action = action;
+  95   1      }
+  96          
+  97          /*------------------------------------------------------------------------*/
+  98          CU_ErrorAction CU_get_error_action(void)
+  99          {
+ 100   1        return g_error_action;
+ 101   1      }
+ 102          
+ 103          /*=================================================================
+ 104           *  Private static function definitions
+ 105           *=================================================================*/
+ 106          /** Internal function to look up the error message for a specified
+ 107           *  error code.  An empty string is returned if iError is not a member
+ 108           *  of CU_ErrorCode.  If you add an error code to enum CU_ErrorCode,
+ 109           *  be sure to add a corresponding error message here.
+ 110           *
+ 111           *  @param iError  CU_ErrorCode to look up.
+ 112           *  @return Pointer to a string containing the error message.
+ 113           *  @see CU_get_error_msg()
+C51 COMPILER V9.55   CUERROR                                                               08/05/2016 10:32:30 PAGE 3   
+
+ 114           */
+ 115          static const char* get_error_desc(CU_ErrorCode iError)
+ 116          {
+ 117   1        int iMaxIndex;
+ 118   1      
+ 119   1        static const char* ErrorDescription[] = {
+ 120   1          N_("No Error."),                             /* CUE_SUCCESS - 0 */
+ 121   1          N_("Memory allocation failed."),            /* CUE_NOMEMORY - 1 */
+ 122   1          "",
+ 123   1          "",
+ 124   1          "",
+ 125   1          "",
+ 126   1          "",
+ 127   1          "",
+ 128   1          "",
+ 129   1          "",
+ 130   1          N_("Test registry does not exist."),          /* CUE_NOREGISTRY - 10 */
+ 131   1          N_("Registry already exists."),               /* CUE_REGISTRY_EXISTS - 11 */
+ 132   1          "",
+ 133   1          "",
+ 134   1          "",
+ 135   1          "",
+ 136   1          "",
+ 137   1          "",
+ 138   1          "",
+ 139   1          "",
+ 140   1          N_("NULL suite not allowed."),                /* CUE_NOSUITE - 20 */
+ 141   1          N_("Suite name cannot be NULL."),             /* CUE_NO_SUITENAME - 21 */
+ 142   1          N_("Suite initialization function failed."),  /* CUE_SINIT_FAILED - 22 */
+ 143   1          N_("Suite cleanup function failed."),         /* CUE_SCLEAN_FAILED - 23 */
+ 144   1          N_("Suite having name already registered."),  /* CUE_DUP_SUITE - 24 */
+ 145   1          N_("Requested suite is not active."),         /* CUE_SUITE_INACTIVE - 25 */
+ 146   1          "",
+ 147   1          "",
+ 148   1          "",
+ 149   1          "",
+ 150   1          N_("NULL test or test function not allowed."),/* CUE_NOTEST - 30 */
+ 151   1          N_("Test name cannot be NULL."),              /* CUE_NO_TESTNAME - 31 */
+ 152   1          N_("Test having this name already in suite."),/* CUE_DUP_TEST - 32 */
+ 153   1          N_("Test not registered in specified suite."),/* CUE_TEST_NOT_IN_SUITE - 33 */
+ 154   1          N_("Requested test is not active"),           /* CUE_TEST_INACTIVE - 34 */
+ 155   1          "",
+ 156   1          "",
+ 157   1          "",
+ 158   1          "",
+ 159   1          "",
+ 160   1          N_("Error opening file."),                    /* CUE_FOPEN_FAILED - 40 */
+ 161   1          N_("Error closing file."),                    /* CUE_FCLOSE_FAILED - 41 */
+ 162   1          N_("Bad file name."),                         /* CUE_BAD_FILENAME - 42 */
+ 163   1          N_("Error during write to file."),            /* CUE_WRITE_ERROR - 43 */
+ 164   1          N_("Undefined Error")
+ 165   1        };
+ 166   1      
+ 167   1        iMaxIndex = (int)(sizeof(ErrorDescription)/sizeof(char *) - 1);
+ 168   1        if ((int)iError < 0) {
+ 169   2          return _(ErrorDescription[0]);
+ 170   2        }
+ 171   1        else if ((int)iError > iMaxIndex) {
+ 172   2          return _(ErrorDescription[iMaxIndex]);
+ 173   2        }
+ 174   1        else {
+ 175   2          return _(ErrorDescription[(int)iError]);
+C51 COMPILER V9.55   CUERROR                                                               08/05/2016 10:32:30 PAGE 4   
+
+ 176   2        }
+ 177   1      }
+ 178          
+ 179          /** @} */
+ 180          
+ 181          #ifdef CUNIT_BUILD_TESTS
+              #include "test_cunit.h"
+              
+              void test_cunit_CUError(void)
+              {
+                CU_ErrorCode old_err = CU_get_error();
+                CU_ErrorAction old_action = CU_get_error_action();
+              
+                test_cunit_start_tests("CUError.c");
+              
+                /* CU_set_error() & CU_get_error() */
+                CU_set_error(CUE_NOMEMORY);
+                TEST(CU_get_error() != CUE_SUCCESS);
+                TEST(CU_get_error() == CUE_NOMEMORY);
+              
+                CU_set_error(CUE_NOREGISTRY);
+                TEST(CU_get_error() != CUE_SUCCESS);
+                TEST(CU_get_error() == CUE_NOREGISTRY);
+              
+                /* CU_get_error_msg() */
+                CU_set_error(CUE_SUCCESS);
+                TEST(!strcmp(CU_get_error_msg(), get_error_desc(CUE_SUCCESS)));
+              
+                CU_set_error(CUE_NOTEST);
+                TEST(!strcmp(CU_get_error_msg(), get_error_desc(CUE_NOTEST)));
+              
+                CU_set_error(CUE_NOMEMORY);
+                TEST(!strcmp(CU_get_error_msg(), get_error_desc(CUE_NOMEMORY)));
+                TEST(strcmp(CU_get_error_msg(), get_error_desc(CUE_SCLEAN_FAILED)));
+              
+                TEST(!strcmp(get_error_desc(100), "Undefined Error"));
+              
+                /* CU_set_error_action() & CU_get_error_action() */
+                CU_set_error_action(CUEA_FAIL);
+                TEST(CU_get_error_action() != CUEA_IGNORE);
+                TEST(CU_get_error_action() == CUEA_FAIL);
+                TEST(CU_get_error_action() != CUEA_ABORT);
+              
+                CU_set_error_action(CUEA_ABORT);
+                TEST(CU_get_error_action() != CUEA_IGNORE);
+                TEST(CU_get_error_action() != CUEA_FAIL);
+                TEST(CU_get_error_action() == CUEA_ABORT);
+              
+                /* reset  values */
+                CU_set_error(old_err);
+                CU_set_error_action(old_action);
+              
+                test_cunit_end_tests();
+              }
+              
+              #endif    /* CUNIT_BUILD_TESTS */
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    186    ----
+   CONSTANT SIZE    =    587    ----
+   XDATA SIZE       =    137       2
+C51 COMPILER V9.55   CUERROR                                                               08/05/2016 10:32:30 PAGE 5   
+
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,2903 @@
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 1   
+
+
+C51 COMPILER V9.55, COMPILATION OF MODULE TESTDB
+OBJECT MODULE PLACED IN .\Objects\TestDB.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE ..\..\CUnit-2.1-3\CUnit\Sources\Framework\TestDB.c LARGE OPTIMIZE(8,SPEE
+                    -D) BROWSE INCDIR(..\..\CUnit-2.1-3\CUnit\Headers;..\..\CUnit-2.1-3\Examples;..\..\src\inc) DEFINE(stdout=0,stderr=0,FILE
+                    -=char,fprintf=printf,setvbuf,_IONBF=0,exit,EXIT_FAILURE=0,snprintf=sprintf) DEBUG OBJECTEXTEND PRINT(.\Listings\TestDB.l
+                    -st) OBJECT(.\Objects\TestDB.obj)
+
+line level    source
+
+   1          /*
+   2           *  CUnit - A Unit testing framework library for C.
+   3           *  Copyright (C) 2001            Anil Kumar
+   4           *  Copyright (C) 2004,2005,2006  Anil Kumar, Jerry St.Clair
+   5           *
+   6           *  This library is free software; you can redistribute it and/or
+   7           *  modify it under the terms of the GNU Library General Public
+   8           *  License as published by the Free Software Foundation; either
+   9           *  version 2 of the License, or (at your option) any later version.
+  10           *
+  11           *  This library is distributed in the hope that it will be useful,
+  12           *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  13           *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  14           *  Library General Public License for more details.
+  15           *
+  16           *  You should have received a copy of the GNU Library General Public
+  17           *  License along with this library; if not, write to the Free Software
+  18           *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+  19           */
+  20          
+  21          /*
+  22           *  Implementation of Registry/TestGroup/Testcase management Routines.
+  23           *
+  24           *  Aug 2001      Initial implementation (AK)
+  25           *
+  26           *  09/Aug/2001   Added startup initialize/cleanup registry functions. (AK)
+  27           *
+  28           *  29/Aug/2001   Added Test and Group Add functions. (AK)
+  29           *
+  30           *  02/Oct/2001   Added Proper Error codes and Messages on the failure conditions. (AK)
+  31           *
+  32           *  13/Oct/2001   Added Code to Check for the Duplicate Group name and test name. (AK)
+  33           *
+  34           *  15-Jul-2004   Added doxygen comments, new interface, added assertions to
+  35           *                internal functions, moved error handling code to CUError.c,
+  36           *                added assertions to make sure no modification of registry
+  37           *                during a run, bug fixes, changed CU_set_registry() so that it
+  38           *                doesn't require cleaning the existing registry. (JDS)
+  39           *
+  40           *  24-Apr-2006   Removed constraint that suites/tests be uniquely named.
+  41           *                Added ability to turn individual tests/suites on or off.
+  42           *                Added lookup functions for suites/tests based on index.
+  43           *                Moved doxygen comments for public API here to header.
+  44           *                Modified internal unit tests to include these changes.  (JDS)
+  45           *
+  46           *  02-May-2006   Added internationalization hooks.  (JDS)
+  47           *
+  48           *  16-Avr-2007   Added setup and teardown functions. (CJN)
+  49           *
+  50          */
+  51          
+  52          /** @file
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 2   
+
+  53           *  Management functions for tests, suites, and the test registry (implementation).
+  54           */
+  55          /** @addtogroup Framework
+  56           @{
+  57          */
+  58          
+  59          #include <stdio.h>
+  60          #include <stdlib.h>
+  61          #include <assert.h>
+  62          #include <string.h>
+  63          #include <stdarg.h>
+  64          
+  65          #include "CUnit.h"
+  66          #include "MyMem.h"
+  67          #include "TestDB.h"
+  68          #include "TestRun.h"
+  69          #include "Util.h"
+  70          #include "CUnit_intl.h"
+  71          
+  72          /*=================================================================
+  73           *  Global/Static Definitions
+  74           *=================================================================*/
+  75          static CU_pTestRegistry f_pTestRegistry = NULL; /**< The active internal Test Registry. */
+  76          
+  77          /*=================================================================
+  78           * Private function forward declarations
+  79           *=================================================================*/
+  80          static void      cleanup_test_registry(CU_pTestRegistry pRegistry);
+  81          static CU_pSuite create_suite(const char* strName, CU_InitializeFunc pInit, CU_CleanupFunc pClean, CU_SetU
+             -pFunc pSetup, CU_TearDownFunc pTear);
+  82          static void      cleanup_suite(CU_pSuite pSuite);
+  83          static void      insert_suite(CU_pTestRegistry pRegistry, CU_pSuite pSuite);
+  84          static CU_pTest  create_test(const char* strName, CU_TestFunc pTestFunc);
+  85          static void      cleanup_test(CU_pTest pTest);
+  86          static void      insert_test(CU_pSuite pSuite, CU_pTest pTest);
+  87          
+  88          static CU_BOOL   suite_exists(CU_pTestRegistry pRegistry, const char* szSuiteName);
+  89          static CU_BOOL   test_exists(CU_pSuite pSuite, const char* szTestName);
+  90          
+  91          /*=================================================================
+  92           *  Public Interface functions
+  93           *=================================================================*/
+  94          CU_ErrorCode CU_initialize_registry(void)
+  95          {
+  96   1        CU_ErrorCode result;
+  97   1      
+  98   1        assert(CU_FALSE == CU_is_test_running());
+  99   1      
+ 100   1        CU_set_error(result = CUE_SUCCESS);
+ 101   1      
+ 102   1        if (NULL != f_pTestRegistry) {
+ 103   2          CU_cleanup_registry();
+ 104   2        }
+ 105   1      
+ 106   1        f_pTestRegistry = CU_create_new_registry();
+ 107   1        if (NULL == f_pTestRegistry) {
+ 108   2          CU_set_error(result = CUE_NOMEMORY);
+ 109   2        }
+ 110   1      
+ 111   1        return result;
+ 112   1      }
+ 113          
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 3   
+
+ 114          /*------------------------------------------------------------------------*/
+ 115          CU_BOOL CU_registry_initialized(void)
+ 116          {
+ 117   1        return (NULL == f_pTestRegistry) ? CU_FALSE : CU_TRUE;
+ 118   1      }
+ 119          
+ 120          /*------------------------------------------------------------------------*/
+ 121          void CU_cleanup_registry(void)
+ 122          {
+ 123   1        assert(CU_FALSE == CU_is_test_running());
+ 124   1      
+ 125   1        CU_set_error(CUE_SUCCESS);
+ 126   1        CU_destroy_existing_registry(&f_pTestRegistry);  /* supposed to handle NULL ok */
+ 127   1        CU_clear_previous_results();
+ 128   1        CU_CREATE_MEMORY_REPORT(NULL);
+ 129   1      }
+ 130          
+ 131          /*------------------------------------------------------------------------*/
+ 132          CU_pTestRegistry CU_get_registry(void)
+ 133          {
+ 134   1        return f_pTestRegistry;
+ 135   1      }
+ 136          
+ 137          /*------------------------------------------------------------------------*/
+ 138          CU_pTestRegistry CU_set_registry(CU_pTestRegistry pRegistry)
+ 139          {
+ 140   1        CU_pTestRegistry pOldRegistry = f_pTestRegistry;
+ 141   1      
+ 142   1        assert(CU_FALSE == CU_is_test_running());
+ 143   1      
+ 144   1        CU_set_error(CUE_SUCCESS);
+ 145   1        f_pTestRegistry = pRegistry;
+ 146   1        return pOldRegistry;
+ 147   1      }
+ 148          
+ 149          /*------------------------------------------------------------------------*/
+ 150          CU_pSuite CU_add_suite_with_setup_and_teardown(const char* strName, CU_InitializeFunc pInit, CU_CleanupFun
+             -c pClean, CU_SetUpFunc pSetup, CU_TearDownFunc pTear)
+ 151          {
+ 152   1        CU_pSuite pRetValue = NULL;
+ 153   1        CU_ErrorCode error = CUE_SUCCESS;
+ 154   1      
+ 155   1        assert(CU_FALSE == CU_is_test_running());
+ 156   1      
+ 157   1        if (NULL == f_pTestRegistry) {
+ 158   2          error = CUE_NOREGISTRY;
+ 159   2        }
+ 160   1        else if (NULL == strName) {
+ 161   2          error = CUE_NO_SUITENAME;
+ 162   2        }
+ 163   1        else {
+ 164   2          pRetValue = create_suite(strName, pInit, pClean, pSetup, pTear);
+ 165   2          if (NULL == pRetValue) {
+ 166   3            error = CUE_NOMEMORY;
+ 167   3          }
+ 168   2          else {
+ 169   3            if (CU_TRUE == suite_exists(f_pTestRegistry, strName)) {
+ 170   4              error = CUE_DUP_SUITE;
+ 171   4            }
+ 172   3            insert_suite(f_pTestRegistry, pRetValue);
+ 173   3          }
+ 174   2        }
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 4   
+
+ 175   1      
+ 176   1        CU_set_error(error);
+ 177   1        return pRetValue;
+ 178   1      }
+ 179          
+ 180          /*------------------------------------------------------------------------*/
+ 181          CU_pSuite CU_add_suite(const char* strName, CU_InitializeFunc pInit, CU_CleanupFunc pClean)
+ 182          {
+ 183   1        return CU_add_suite_with_setup_and_teardown(strName, pInit, pClean, NULL, NULL);
+ 184   1      }
+ 185          
+ 186          /*------------------------------------------------------------------------*/
+ 187          CU_ErrorCode CU_set_suite_active(CU_pSuite pSuite, CU_BOOL fNewActive)
+ 188          {
+ 189   1        CU_ErrorCode result = CUE_SUCCESS;
+ 190   1      
+ 191   1        if (NULL == pSuite) {
+ 192   2          result = CUE_NOSUITE;
+ 193   2        }
+ 194   1        else {
+ 195   2          pSuite->fActive = fNewActive;
+ 196   2        }
+ 197   1      
+ 198   1        CU_set_error(result);
+ 199   1        return result;
+ 200   1      }
+ 201          
+ 202          /*------------------------------------------------------------------------*/
+ 203          CU_ErrorCode CU_set_suite_name(CU_pSuite pSuite, const char *strNewName)
+ 204          {
+ 205   1        CU_ErrorCode result = CUE_SUCCESS;
+ 206   1      
+ 207   1        if (NULL == pSuite) {
+ 208   2          result = CUE_NOSUITE;
+ 209   2        }
+ 210   1        else if (NULL == strNewName) {
+ 211   2          result = CUE_NO_SUITENAME;
+ 212   2        }
+ 213   1        else {
+ 214   2          CU_FREE(pSuite->pName);
+ 215   2          pSuite->pName = (char *)CU_MALLOC(strlen(strNewName)+1);
+ 216   2          strcpy(pSuite->pName, strNewName);
+ 217   2        }
+ 218   1      
+ 219   1        CU_set_error(result);
+ 220   1        return result;
+ 221   1      }
+ 222          
+ 223          /*------------------------------------------------------------------------*/
+ 224          CU_ErrorCode CU_set_suite_initfunc(CU_pSuite pSuite, CU_InitializeFunc pNewInit)
+ 225          {
+ 226   1        CU_ErrorCode result = CUE_SUCCESS;
+ 227   1      
+ 228   1        if (NULL == pSuite) {
+ 229   2          result = CUE_NOSUITE;
+ 230   2        }
+ 231   1        else {
+ 232   2          pSuite->pInitializeFunc = pNewInit;
+ 233   2        }
+ 234   1      
+ 235   1        CU_set_error(result);
+ 236   1        return result;
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 5   
+
+ 237   1      }
+ 238          
+ 239          /*------------------------------------------------------------------------*/
+ 240          CU_ErrorCode CU_set_suite_cleanupfunc(CU_pSuite pSuite, CU_CleanupFunc pNewClean)
+ 241          {
+ 242   1        CU_ErrorCode result = CUE_SUCCESS;
+ 243   1      
+ 244   1        if (NULL == pSuite) {
+ 245   2          result = CUE_NOSUITE;
+ 246   2        }
+ 247   1        else {
+ 248   2          pSuite->pCleanupFunc = pNewClean;
+ 249   2        }
+ 250   1      
+ 251   1        CU_set_error(result);
+ 252   1        return result;
+ 253   1      }
+ 254          
+ 255          /*------------------------------------------------------------------------*/
+ 256          CU_pSuite CU_get_suite(const char *strName)
+ 257          {
+ 258   1        CU_pSuite result = NULL;
+ 259   1        CU_ErrorCode error = CUE_SUCCESS;
+ 260   1      
+ 261   1        if (NULL == f_pTestRegistry) {
+ 262   2          error = CUE_NOREGISTRY;
+ 263   2        }
+ 264   1        else if (NULL == strName) {
+ 265   2          error = CUE_NO_SUITENAME;
+ 266   2        }
+ 267   1        else {
+ 268   2          result = CU_get_suite_by_name(strName, f_pTestRegistry);
+ 269   2        }
+ 270   1      
+ 271   1        CU_set_error(error);
+ 272   1        return result;
+ 273   1      }
+ 274          
+ 275          /*------------------------------------------------------------------------*/
+ 276          CU_pSuite CU_get_suite_at_pos(unsigned int pos)
+ 277          {
+ 278   1        CU_pSuite result = NULL;
+ 279   1        CU_ErrorCode error = CUE_SUCCESS;
+ 280   1      
+ 281   1        if (NULL == f_pTestRegistry) {
+ 282   2          error = CUE_NOREGISTRY;
+ 283   2        }
+ 284   1        else {
+ 285   2          result = CU_get_suite_by_index(pos, f_pTestRegistry);
+ 286   2        }
+ 287   1      
+ 288   1        CU_set_error(error);
+ 289   1        return result;
+ 290   1      }
+ 291          
+ 292          /*------------------------------------------------------------------------*/
+ 293          unsigned int CU_get_suite_pos(CU_pSuite pSuite)
+ 294          {
+ 295   1        unsigned int result = 0;
+ 296   1        CU_ErrorCode error = CUE_SUCCESS;
+ 297   1        CU_pSuite pCurrentSuite = NULL;
+ 298   1      
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 6   
+
+ 299   1        if (NULL == f_pTestRegistry) {
+ 300   2          error = CUE_NOREGISTRY;
+ 301   2        }
+ 302   1        else if (NULL == pSuite) {
+ 303   2          error = CUE_NOSUITE;
+ 304   2        }
+ 305   1        else {
+ 306   2          pCurrentSuite = f_pTestRegistry->pSuite;
+ 307   2          result = 1;
+ 308   2          while ((NULL != pCurrentSuite) && (pCurrentSuite != pSuite)) {
+ 309   3            ++result;
+ 310   3            pCurrentSuite = pCurrentSuite->pNext;
+ 311   3          }
+ 312   2          if (pCurrentSuite == NULL) {
+ 313   3            result = 0;
+ 314   3          }
+ 315   2        }
+ 316   1      
+ 317   1        CU_set_error(error);
+ 318   1        return result;
+ 319   1      }
+ 320          
+ 321          /*------------------------------------------------------------------------*/
+ 322          unsigned int CU_get_suite_pos_by_name(const char *strName)
+ 323          {
+ 324   1        unsigned int result = 0;
+ 325   1        CU_ErrorCode error = CUE_SUCCESS;
+ 326   1        CU_pSuite pCurrentSuite = NULL;
+ 327   1      
+ 328   1        if (NULL == f_pTestRegistry) {
+ 329   2          error = CUE_NOREGISTRY;
+ 330   2        }
+ 331   1        else if (NULL == strName) {
+ 332   2          error = CUE_NO_SUITENAME;
+ 333   2        }
+ 334   1        else {
+ 335   2          pCurrentSuite = f_pTestRegistry->pSuite;
+ 336   2          result = 1;
+ 337   2          while ((NULL != pCurrentSuite) && (0 != strcmp(pCurrentSuite->pName, strName))) {
+ 338   3            ++result;
+ 339   3            pCurrentSuite = pCurrentSuite->pNext;
+ 340   3          }
+ 341   2          if (pCurrentSuite == NULL) {
+ 342   3            result = 0;
+ 343   3          }
+ 344   2        }
+ 345   1      
+ 346   1        CU_set_error(error);
+ 347   1        return result;
+ 348   1      }
+ 349          
+ 350          /*------------------------------------------------------------------------*/
+ 351          CU_pTest CU_add_test(CU_pSuite pSuite, const char* strName, CU_TestFunc pTestFunc)
+ 352          {
+ 353   1        CU_pTest pRetValue = NULL;
+ 354   1        CU_ErrorCode error = CUE_SUCCESS;
+ 355   1      
+ 356   1        assert(CU_FALSE == CU_is_test_running());
+ 357   1      
+ 358   1        if (NULL == f_pTestRegistry) {
+ 359   2          error = CUE_NOREGISTRY;
+ 360   2        }
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 7   
+
+ 361   1        else if (NULL == pSuite) {
+ 362   2          error = CUE_NOSUITE;
+ 363   2        }
+ 364   1        else if (NULL == strName) {
+ 365   2          error = CUE_NO_TESTNAME;
+ 366   2        }
+ 367   1         else if(NULL == pTestFunc) {
+ 368   2          error = CUE_NOTEST;
+ 369   2        }
+ 370   1        else {
+ 371   2          pRetValue = create_test(strName, pTestFunc);
+ 372   2          if (NULL == pRetValue) {
+ 373   3            error = CUE_NOMEMORY;
+ 374   3          }
+ 375   2          else {
+ 376   3            f_pTestRegistry->uiNumberOfTests++;
+ 377   3            if (CU_TRUE == test_exists(pSuite, strName)) {
+ 378   4              error = CUE_DUP_TEST;
+ 379   4            }
+ 380   3            insert_test(pSuite, pRetValue);
+ 381   3          }
+ 382   2        }
+ 383   1      
+ 384   1        CU_set_error(error);
+ 385   1        return pRetValue;
+ 386   1      }
+ 387          
+ 388          /*------------------------------------------------------------------------*/
+ 389          CU_ErrorCode CU_set_test_active(CU_pTest pTest, CU_BOOL fNewActive)
+ 390          {
+ 391   1        CU_ErrorCode result = CUE_SUCCESS;
+ 392   1      
+ 393   1        if (NULL == pTest) {
+ 394   2          result = CUE_NOTEST;
+ 395   2        }
+ 396   1        else {
+ 397   2          pTest->fActive = fNewActive;
+ 398   2        }
+ 399   1      
+ 400   1        CU_set_error(result);
+ 401   1        return result;
+ 402   1      }
+ 403          
+ 404          /*------------------------------------------------------------------------*/
+ 405          CU_ErrorCode CU_set_test_name(CU_pTest pTest, const char *strNewName)
+ 406          {
+ 407   1        CU_ErrorCode result = CUE_SUCCESS;
+ 408   1      
+ 409   1        if (NULL == pTest) {
+ 410   2          result = CUE_NOTEST;
+ 411   2        }
+ 412   1        else if (NULL == strNewName) {
+ 413   2          result = CUE_NO_TESTNAME;
+ 414   2        }
+ 415   1        else {
+ 416   2          CU_FREE(pTest->pName);
+ 417   2          pTest->pName = (char *)CU_MALLOC(strlen(strNewName)+1);
+ 418   2          strcpy(pTest->pName, strNewName);
+ 419   2        }
+ 420   1      
+ 421   1        CU_set_error(result);
+ 422   1        return result;
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 8   
+
+ 423   1      }
+ 424          
+ 425          /*------------------------------------------------------------------------*/
+ 426          CU_ErrorCode CU_set_test_func(CU_pTest pTest, CU_TestFunc pNewFunc)
+ 427          {
+ 428   1        CU_ErrorCode result = CUE_SUCCESS;
+ 429   1      
+ 430   1        if ((NULL == pTest) || (NULL == pNewFunc)) {
+ 431   2          result = CUE_NOTEST;
+ 432   2        }
+ 433   1        else {
+ 434   2          pTest->pTestFunc = pNewFunc;
+ 435   2        }
+ 436   1      
+ 437   1        CU_set_error(result);
+ 438   1        return result;
+ 439   1      }
+ 440          
+ 441          /*------------------------------------------------------------------------*/
+ 442          CU_pTest CU_get_test(CU_pSuite pSuite, const char *strName)
+ 443          {
+ 444   1        CU_pTest result = NULL;
+ 445   1        CU_ErrorCode error = CUE_SUCCESS;
+ 446   1      
+ 447   1        if (NULL == f_pTestRegistry) {
+ 448   2          error = CUE_NOREGISTRY;
+ 449   2        }
+ 450   1        else if (NULL == pSuite) {
+ 451   2          error = CUE_NOSUITE;
+ 452   2        }
+ 453   1        else if (NULL == strName) {
+ 454   2          error = CUE_NO_SUITENAME;
+ 455   2        }
+ 456   1        else {
+ 457   2          result = CU_get_test_by_name(strName, pSuite);
+ 458   2        }
+ 459   1      
+ 460   1        CU_set_error(error);
+ 461   1        return result;
+ 462   1      }
+ 463          
+ 464          /*------------------------------------------------------------------------*/
+ 465          CU_pTest CU_get_test_at_pos(CU_pSuite pSuite, unsigned int pos)
+ 466          {
+ 467   1        CU_pTest result = NULL;
+ 468   1        CU_ErrorCode error = CUE_SUCCESS;
+ 469   1      
+ 470   1        if (NULL == f_pTestRegistry) {
+ 471   2          error = CUE_NOREGISTRY;
+ 472   2        }
+ 473   1        else if (NULL == pSuite) {
+ 474   2          error = CUE_NOSUITE;
+ 475   2        }
+ 476   1        else {
+ 477   2          result = CU_get_test_by_index(pos, pSuite);
+ 478   2        }
+ 479   1      
+ 480   1        CU_set_error(error);
+ 481   1        return result;
+ 482   1      }
+ 483          
+ 484          /*------------------------------------------------------------------------*/
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 9   
+
+ 485          unsigned int CU_get_test_pos(CU_pSuite pSuite, CU_pTest pTest)
+ 486          {
+ 487   1        unsigned int result = 0;
+ 488   1        CU_ErrorCode error = CUE_SUCCESS;
+ 489   1        CU_pTest pCurrentTest = NULL;
+ 490   1      
+ 491   1        if (NULL == f_pTestRegistry) {
+ 492   2          error = CUE_NOREGISTRY;
+ 493   2        }
+ 494   1        else if (NULL == pSuite) {
+ 495   2          error = CUE_NOSUITE;
+ 496   2        }
+ 497   1        else if (NULL == pTest) {
+ 498   2          error = CUE_NOTEST;
+ 499   2        }
+ 500   1        else {
+ 501   2          pCurrentTest = pSuite->pTest;
+ 502   2          result = 1;
+ 503   2          while ((NULL != pCurrentTest) && (pCurrentTest != pTest)) {
+ 504   3            ++result;
+ 505   3            pCurrentTest = pCurrentTest->pNext;
+ 506   3          }
+ 507   2          if (pCurrentTest == NULL) {
+ 508   3            result = 0;
+ 509   3          }
+ 510   2        }
+ 511   1      
+ 512   1        CU_set_error(error);
+ 513   1        return result;
+ 514   1      }
+ 515          
+ 516          /*------------------------------------------------------------------------*/
+ 517          unsigned int CU_get_test_pos_by_name(CU_pSuite pSuite, const char *strName)
+ 518          {
+ 519   1        unsigned int result = 0;
+ 520   1        CU_ErrorCode error = CUE_SUCCESS;
+ 521   1        CU_pTest pCurrentTest = NULL;
+ 522   1      
+ 523   1        if (NULL == f_pTestRegistry) {
+ 524   2          error = CUE_NOREGISTRY;
+ 525   2        }
+ 526   1        else if (NULL == pSuite) {
+ 527   2          error = CUE_NOSUITE;
+ 528   2        }
+ 529   1        else if (NULL == strName) {
+ 530   2          error = CUE_NO_TESTNAME;
+ 531   2        }
+ 532   1        else {
+ 533   2          pCurrentTest = pSuite->pTest;
+ 534   2          result = 1;
+ 535   2          while ((NULL != pCurrentTest) && (0 != strcmp(pCurrentTest->pName, strName))) {
+ 536   3            ++result;
+ 537   3            pCurrentTest = pCurrentTest->pNext;
+ 538   3          }
+ 539   2          if (pCurrentTest == NULL) {
+ 540   3            result = 0;
+ 541   3          }
+ 542   2        }
+ 543   1      
+ 544   1        CU_set_error(error);
+ 545   1        return result;
+ 546   1      }
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 10  
+
+ 547          
+ 548          /*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*/
+ 549          /*  This section is based conceptually on code
+ 550           *  Copyright (C) 2004  Aurema Pty Ltd.
+ 551           *
+ 552           *  This library is free software; you can redistribute it and/or
+ 553           *  modify it under the terms of the GNU Library General Public
+ 554           *  License as published by the Free Software Foundation; either
+ 555           *  version 2 of the License, or (at your option) any later version.
+ 556           *
+ 557           *  This library is distributed in the hope that it will be useful,
+ 558           *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ 559           *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ 560           *  Library General Public License for more details.
+ 561           *
+ 562           *  You should have received a copy of the GNU Library General Public
+ 563           *  License along with this library; if not, write to the Free Software
+ 564           *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ 565           *
+ 566           *  Derived from code contributed by K. Cheung and Aurema Pty Ltd. (thanks!)
+ 567           *    int test_group_register(test_group_t *tg)
+ 568           *    int test_suite_register(test_suite_t *ts)
+ 569           */
+ 570          /*------------------------------------------------------------------------*/
+ 571          CU_ErrorCode CU_register_nsuites(int suite_count, ...)
+ 572          {
+ 573   1        CU_SuiteInfo *pSuiteItem = NULL;
+ 574   1        CU_TestInfo  *pTestItem = NULL;
+ 575   1        CU_pSuite     pSuite = NULL;
+ 576   1      
+ 577   1        va_list argptr;
+ 578   1        int i;
+ 579   1      
+ 580   1        va_start(argptr, suite_count);
+ 581   1      
+ 582   1        for (i=0 ; i<suite_count ; ++i) {
+ 583   2          pSuiteItem = va_arg(argptr, CU_pSuiteInfo);
+ 584   2          if (NULL != pSuiteItem) {
+ 585   3            for ( ; NULL != pSuiteItem->pName; pSuiteItem++) {
+ 586   4              if (NULL != (pSuite = CU_add_suite_with_setup_and_teardown(pSuiteItem->pName, pSuiteItem->pInitFun
+             -c, pSuiteItem->pCleanupFunc, pSuiteItem->pSetUpFunc, pSuiteItem->pTearDownFunc))) {
+ 587   5                for (pTestItem = pSuiteItem->pTests; NULL != pTestItem->pName; pTestItem++) {
+ 588   6                  if (NULL == CU_add_test(pSuite, pTestItem->pName, pTestItem->pTestFunc)) {
+ 589   7                    return CU_get_error();
+ 590   7                  }
+ 591   6                }
+ 592   5              }
+ 593   4              else {
+ 594   5                return CU_get_error();
+ 595   5              }
+ 596   4            }
+ 597   3          }
+ 598   2        }
+ 599   1              return CU_get_error();
+ 600   1      }
+ 601          
+ 602          /*------------------------------------------------------------------------*/
+ 603          CU_ErrorCode CU_register_suites(CU_SuiteInfo suite_info[])
+ 604          {
+ 605   1        return CU_register_nsuites(1, suite_info);
+ 606   1      }
+ 607          /*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*/
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 11  
+
+ 608          
+ 609          /*=================================================================
+ 610           *  Private static function definitions
+ 611           *=================================================================*/
+ 612          /*------------------------------------------------------------------------*/
+ 613          /**
+ 614           *  Internal function to clean up the specified test registry.
+ 615           *  cleanup_suite() will be called for each registered suite to perform
+ 616           *  cleanup of the associated test cases.  Then, the suite's memory will
+ 617           *  be freed.  Note that any pointers to tests or suites in pRegistry
+ 618           *  held by the user will be invalidated by this function.  Severe problems
+ 619           *  can occur if this function is called during a test run involving pRegistry.
+ 620           *  Note that memory held for data members in the registry (e.g. pName) and
+ 621           *  the registry itself are not freed by this function.
+ 622           *
+ 623           *  @see cleanup_suite()
+ 624           *  @see cleanup_test()
+ 625           *  @param pRegistry CU_pTestRegistry to clean up (non-NULL).
+ 626           */
+ 627          static void cleanup_test_registry(CU_pTestRegistry pRegistry)
+ 628          {
+ 629   1        CU_pSuite pCurSuite = NULL;
+ 630   1        CU_pSuite pNextSuite = NULL;
+ 631   1      
+ 632   1        assert(NULL != pRegistry);
+ 633   1      
+ 634   1        pCurSuite = pRegistry->pSuite;
+ 635   1        while (NULL != pCurSuite) {
+ 636   2          pNextSuite = pCurSuite->pNext;
+ 637   2          cleanup_suite(pCurSuite);
+ 638   2      
+ 639   2          CU_FREE(pCurSuite);
+ 640   2          pCurSuite = pNextSuite;
+ 641   2        }
+ 642   1        pRegistry->pSuite = NULL;
+ 643   1        pRegistry->uiNumberOfSuites = 0;
+ 644   1        pRegistry->uiNumberOfTests = 0;
+ 645   1      }
+ 646          
+ 647          /*------------------------------------------------------------------------*/
+ 648          /**
+ 649           *  Internal function to create a new test suite having the specified parameters.
+ 650           *  This function creates a new test suite having the specified name and
+ 651           *  initialization/cleanup functions.  The new suite is active for execution during
+ 652           *  test runs.  The strName cannot be NULL (checked by assertion), but either or
+ 653           *  both function pointers can be.  A pointer to the newly-created suite is returned,
+ 654           *  or NULL if there was an error allocating memory for the new suite.  It is the
+ 655           *  responsibility of the caller to destroy the returned suite (use cleanup_suite()
+ 656           *  before freeing the returned pointer).
+ 657           *
+ 658           *  @param strName Name for the new test suite (non-NULL).
+ 659           *  @param pInit   Initialization function to call before running suite.
+ 660           *  @param pClean  Cleanup function to call after running suite.
+ 661           *  @return A pointer to the newly-created suite (NULL if creation failed)
+ 662           */
+ 663          static CU_pSuite create_suite(const char* strName, CU_InitializeFunc pInit, CU_CleanupFunc pClean, CU_SetU
+             -pFunc pSetup, CU_TearDownFunc pTear)
+ 664          {
+ 665   1        CU_pSuite pRetValue = (CU_pSuite)CU_MALLOC(sizeof(CU_Suite));
+ 666   1      
+ 667   1        assert(NULL != strName);
+ 668   1      
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 12  
+
+ 669   1        if (NULL != pRetValue) {
+ 670   2          pRetValue->pName = (char *)CU_MALLOC(strlen(strName)+1);
+ 671   2          if (NULL != pRetValue->pName) {
+ 672   3            strcpy(pRetValue->pName, strName);
+ 673   3            pRetValue->fActive = CU_TRUE;
+ 674   3            pRetValue->pInitializeFunc = pInit;
+ 675   3            pRetValue->pCleanupFunc = pClean;
+ 676   3            pRetValue->pSetUpFunc = pSetup;
+ 677   3            pRetValue->pTearDownFunc = pTear;
+ 678   3            pRetValue->pTest = NULL;
+ 679   3            pRetValue->pNext = NULL;
+ 680   3            pRetValue->pPrev = NULL;
+ 681   3            pRetValue->uiNumberOfTests = 0;
+ 682   3          }
+ 683   2          else {
+ 684   3            CU_FREE(pRetValue);
+ 685   3            pRetValue = NULL;
+ 686   3          }
+ 687   2        }
+ 688   1      
+ 689   1        return pRetValue;
+ 690   1      }
+ 691          
+ 692          /*------------------------------------------------------------------------*/
+ 693          /**
+ 694           *  Internal function to clean up the specified test suite.
+ 695           *  Each test case registered with pSuite will be freed.  Allocated memory held
+ 696           *  by the suite (i.e. the name) will also be deallocated.  Severe problems can
+ 697           *  occur if this function is called during a test run involving pSuite.
+ 698           *
+ 699           *  @param pSuite CU_pSuite to clean up (non-NULL).
+ 700           *  @see cleanup_test_registry()
+ 701           *  @see cleanup_test()
+ 702           */
+ 703          static void cleanup_suite(CU_pSuite pSuite)
+ 704          {
+ 705   1        CU_pTest pCurTest = NULL;
+ 706   1        CU_pTest pNextTest = NULL;
+ 707   1      
+ 708   1        assert(NULL != pSuite);
+ 709   1      
+ 710   1        pCurTest = pSuite->pTest;
+ 711   1        while (NULL != pCurTest) {
+ 712   2          pNextTest = pCurTest->pNext;
+ 713   2      
+ 714   2          cleanup_test(pCurTest);
+ 715   2      
+ 716   2          CU_FREE(pCurTest);
+ 717   2          pCurTest = pNextTest;
+ 718   2        }
+ 719   1        if (NULL != pSuite->pName) {
+ 720   2          CU_FREE(pSuite->pName);
+ 721   2        }
+ 722   1      
+ 723   1        pSuite->pName = NULL;
+ 724   1        pSuite->pTest = NULL;
+ 725   1        pSuite->uiNumberOfTests = 0;
+ 726   1      }
+ 727          
+ 728          /*------------------------------------------------------------------------*/
+ 729          /**
+ 730           *  Internal function to insert a suite into a registry.
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 13  
+
+ 731           *  The suite name is assumed to be unique.  Internally, the list of suites
+ 732           *  is a double-linked list, which this function manages.  Insertion of NULL
+ 733           *  pSuites is not allowed (checked by assertion).  Severe problems can occur
+ 734           *  if this function is called during a test run involving pRegistry.
+ 735           *
+ 736           *  @param pRegistry CU_pTestRegistry to insert into (non-NULL).
+ 737           *  @param pSuite    CU_pSuite to insert (non-NULL).
+ 738           *  @see insert_test()
+ 739           */
+ 740          static void insert_suite(CU_pTestRegistry pRegistry, CU_pSuite pSuite)
+ 741          {
+ 742   1        CU_pSuite pCurSuite = NULL;
+ 743   1      
+ 744   1        assert(NULL != pRegistry);
+ 745   1        assert(NULL != pSuite);
+ 746   1      
+ 747   1        pCurSuite = pRegistry->pSuite;
+ 748   1      
+ 749   1        assert(pCurSuite != pSuite);
+ 750   1      
+ 751   1        pSuite->pNext = NULL;
+ 752   1        pRegistry->uiNumberOfSuites++;
+ 753   1      
+ 754   1        /* if this is the 1st suite to be added... */
+ 755   1        if (NULL == pCurSuite) {
+ 756   2          pRegistry->pSuite = pSuite;
+ 757   2          pSuite->pPrev = NULL;
+ 758   2        }
+ 759   1        /* otherwise, add it to the end of the linked list... */
+ 760   1        else {
+ 761   2          while (NULL != pCurSuite->pNext) {
+ 762   3            pCurSuite = pCurSuite->pNext;
+ 763   3            assert(pCurSuite != pSuite);
+ 764   3          }
+ 765   2      
+ 766   2          pCurSuite->pNext = pSuite;
+ 767   2          pSuite->pPrev = pCurSuite;
+ 768   2        }
+ 769   1      }
+ 770          
+ 771          /*------------------------------------------------------------------------*/
+ 772          /**
+ 773           *  Internal function to create a new test case having the specified parameters.
+ 774           *  This function creates a new test having the specified name and test function.
+ 775           *  The strName cannot be NULL (checked by assertion), but the function pointer
+ 776           *  may be.  A pointer to the newly-created test is returned, or NULL if there
+ 777           *  was an error allocating memory for the new test.  It is the responsibility
+ 778           *  of the caller to destroy the returned test (use cleanup_test() before freeing
+ 779           *  the returned pointer).
+ 780           *
+ 781           *  @param strName   Name for the new test.
+ 782           *  @param pTestFunc Test function to call when running this test.
+ 783           *  @return A pointer to the newly-created test (NULL if creation failed)
+ 784           */
+ 785          static CU_pTest create_test(const char* strName, CU_TestFunc pTestFunc)
+ 786          {
+ 787   1        CU_pTest pRetValue = (CU_pTest)CU_MALLOC(sizeof(CU_Test));
+ 788   1      
+ 789   1        assert(NULL != strName);
+ 790   1      
+ 791   1        if (NULL != pRetValue) {
+ 792   2          pRetValue->pName = (char *)CU_MALLOC(strlen(strName)+1);
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 14  
+
+ 793   2          if (NULL != pRetValue->pName) {
+ 794   3            strcpy(pRetValue->pName, strName);
+ 795   3            pRetValue->fActive = CU_TRUE;
+ 796   3            pRetValue->pTestFunc = pTestFunc;
+ 797   3            pRetValue->pJumpBuf = NULL;
+ 798   3            pRetValue->pNext = NULL;
+ 799   3            pRetValue->pPrev = NULL;
+ 800   3          }
+ 801   2          else {
+ 802   3            CU_FREE(pRetValue);
+ 803   3            pRetValue = NULL;
+ 804   3          }
+ 805   2        }
+ 806   1      
+ 807   1        return pRetValue;
+ 808   1      }
+ 809          
+ 810          /*------------------------------------------------------------------------*/
+ 811          /**
+ 812           *  Internal function to clean up the specified test.
+ 813           *  All memory associated with the test will be freed.  Severe problems can
+ 814           *  occur if this function is called during a test run involving pTest.
+ 815           *
+ 816           *  @param pTest CU_pTest to clean up (non-NULL).
+ 817           *  @see cleanup_test_registry()
+ 818           *  @see cleanup_suite()
+ 819           */
+ 820          static void cleanup_test(CU_pTest pTest)
+ 821          {
+ 822   1        assert(NULL != pTest);
+ 823   1      
+ 824   1        if (NULL != pTest->pName) {
+ 825   2          CU_FREE(pTest->pName);
+ 826   2        }
+ 827   1      
+ 828   1        pTest->pName = NULL;
+ 829   1      }
+ 830          
+ 831          /*------------------------------------------------------------------------*/
+ 832          /**
+ 833           *  Internal function to insert a test into a suite.
+ 834           *  The test name is assumed to be unique.  Internally, the list of tests in
+ 835           *  a suite is a double-linked list, which this function manages.   Neither
+ 836           *  pSuite nor pTest may be NULL (checked by assertion).  Further, pTest must
+ 837           *  be an independent test (i.e. both pTest->pNext and pTest->pPrev == NULL),
+ 838           *  which is also checked by assertion.  Severe problems can occur if this
+ 839           *  function is called during a test run involving pSuite.
+ 840           *
+ 841           *  @param pSuite CU_pSuite to insert into (non-NULL).
+ 842           *  @param pTest  CU_pTest to insert (non-NULL).
+ 843           *  @see insert_suite()
+ 844           */
+ 845          static void insert_test(CU_pSuite pSuite, CU_pTest pTest)
+ 846          {
+ 847   1        CU_pTest pCurTest = NULL;
+ 848   1      
+ 849   1        assert(NULL != pSuite);
+ 850   1        assert(NULL != pTest);
+ 851   1        assert(NULL == pTest->pNext);
+ 852   1        assert(NULL == pTest->pPrev);
+ 853   1      
+ 854   1        pCurTest = pSuite->pTest;
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 15  
+
+ 855   1      
+ 856   1        assert(pCurTest != pTest);
+ 857   1      
+ 858   1        pSuite->uiNumberOfTests++;
+ 859   1        /* if this is the 1st suite to be added... */
+ 860   1        if (NULL == pCurTest) {
+ 861   2          pSuite->pTest = pTest;
+ 862   2          pTest->pPrev = NULL;
+ 863   2        }
+ 864   1        else {
+ 865   2          while (NULL != pCurTest->pNext) {
+ 866   3            pCurTest = pCurTest->pNext;
+ 867   3            assert(pCurTest != pTest);
+ 868   3          }
+ 869   2      
+ 870   2          pCurTest->pNext = pTest;
+ 871   2          pTest->pPrev = pCurTest;
+ 872   2        }
+ 873   1      }
+ 874          
+ 875          /*------------------------------------------------------------------------*/
+ 876          /**
+ 877           *  Internal function to check whether a suite having a specified
+ 878           *  name already exists.
+ 879           *
+ 880           *  @param pRegistry   CU_pTestRegistry to check (non-NULL).
+ 881           *  @param szSuiteName Suite name to check (non-NULL).
+ 882           *  @return CU_TRUE if suite exists in the registry, CU_FALSE otherwise.
+ 883           */
+ 884          static CU_BOOL suite_exists(CU_pTestRegistry pRegistry, const char* szSuiteName)
+ 885          {
+ 886   1        CU_pSuite pSuite = NULL;
+ 887   1      
+ 888   1        assert(NULL != pRegistry);
+ 889   1        assert(NULL != szSuiteName);
+ 890   1      
+ 891   1        pSuite = pRegistry->pSuite;
+ 892   1        while (NULL != pSuite) {
+ 893   2          if ((NULL != pSuite->pName) && (0 == CU_compare_strings(szSuiteName, pSuite->pName))) {
+ 894   3            return CU_TRUE;
+ 895   3          }
+ 896   2          pSuite = pSuite->pNext;
+ 897   2        }
+ 898   1      
+ 899   1        return CU_FALSE;
+ 900   1      }
+ 901          
+ 902          /*------------------------------------------------------------------------*/
+ 903          /**
+ 904           *  Internal function to check whether a test having a specified
+ 905           *  name is already registered in a given suite.
+ 906           *
+ 907           *  @param pSuite     CU_pSuite to check (non-NULL).
+ 908           *  @param szTestName Test case name to check (non-NULL).
+ 909           *  @return CU_TRUE if test exists in the suite, CU_FALSE otherwise.
+ 910           */
+ 911          static CU_BOOL test_exists(CU_pSuite pSuite, const char* szTestName)
+ 912          {
+ 913   1        CU_pTest pTest = NULL;
+ 914   1      
+ 915   1        assert(NULL != pSuite);
+ 916   1        assert(NULL != szTestName);
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 16  
+
+ 917   1      
+ 918   1        pTest = pSuite->pTest;
+ 919   1        while (NULL != pTest) {
+ 920   2          if ((NULL != pTest->pName) && (0 == CU_compare_strings(szTestName, pTest->pName))) {
+ 921   3            return CU_TRUE;
+ 922   3          }
+ 923   2          pTest = pTest->pNext;
+ 924   2        }
+ 925   1      
+ 926   1        return CU_FALSE;
+ 927   1      }
+ 928          
+ 929          /*=================================================================
+ 930           *  Public but primarily internal function definitions
+ 931           *=================================================================*/
+ 932          CU_pTestRegistry CU_create_new_registry(void)
+ 933          {
+ 934   1        CU_pTestRegistry pRegistry = (CU_pTestRegistry)CU_MALLOC(sizeof(CU_TestRegistry));
+ 935   1        if (NULL != pRegistry) {
+ 936   2          pRegistry->pSuite = NULL;
+ 937   2          pRegistry->uiNumberOfSuites = 0;
+ 938   2          pRegistry->uiNumberOfTests = 0;
+ 939   2        }
+ 940   1      
+ 941   1        return pRegistry;
+ 942   1      }
+ 943          
+ 944          /*------------------------------------------------------------------------*/
+ 945          void CU_destroy_existing_registry(CU_pTestRegistry* ppRegistry)
+ 946          {
+ 947   1        assert(NULL != ppRegistry);
+ 948   1      
+ 949   1        /* Note - CU_cleanup_registry counts on being able to pass NULL */
+ 950   1      
+ 951   1        if (NULL != *ppRegistry) {
+ 952   2          cleanup_test_registry(*ppRegistry);
+ 953   2        }
+ 954   1        CU_FREE(*ppRegistry);
+ 955   1        *ppRegistry = NULL;
+ 956   1      }
+ 957          
+ 958          /*------------------------------------------------------------------------*/
+ 959          CU_pSuite CU_get_suite_by_name(const char* szSuiteName, CU_pTestRegistry pRegistry)
+ 960          {
+ 961   1        CU_pSuite pSuite = NULL;
+ 962   1        CU_pSuite pCur = NULL;
+ 963   1      
+ 964   1        assert(NULL != pRegistry);
+ 965   1        assert(NULL != szSuiteName);
+ 966   1      
+ 967   1        pCur = pRegistry->pSuite;
+ 968   1        while (NULL != pCur)  {
+ 969   2          if ((NULL != pCur->pName) && (0 == CU_compare_strings(pCur->pName, szSuiteName))) {
+ 970   3            pSuite = pCur;
+ 971   3            break;
+ 972   3          }
+ 973   2          pCur = pCur->pNext;
+ 974   2        }
+ 975   1      
+ 976   1        return pSuite;
+ 977   1      }
+ 978          
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 17  
+
+ 979          /*------------------------------------------------------------------------*/
+ 980          CU_pSuite CU_get_suite_by_index(unsigned int index, CU_pTestRegistry pRegistry)
+ 981          {
+ 982   1        CU_pSuite result = NULL;
+ 983   1        unsigned int i;
+ 984   1      
+ 985   1        assert(NULL != pRegistry);
+ 986   1      
+ 987   1        if ((index > 0) && (index <= f_pTestRegistry->uiNumberOfSuites)) {
+ 988   2          result = f_pTestRegistry->pSuite;
+ 989   2          for (i=1 ; i<index ; ++i) {
+ 990   3            result = result->pNext;
+ 991   3          }
+ 992   2        }
+ 993   1      
+ 994   1        return result;
+ 995   1      }
+ 996          
+ 997          /*------------------------------------------------------------------------*/
+ 998          CU_pTest CU_get_test_by_name(const char* szTestName, CU_pSuite pSuite)
+ 999          {
+1000   1        CU_pTest pTest = NULL;
+1001   1        CU_pTest pCur = NULL;
+1002   1      
+1003   1        assert(NULL != pSuite);
+1004   1        assert(NULL != szTestName);
+1005   1      
+1006   1        pCur = pSuite->pTest;
+1007   1        while (NULL != pCur) {
+1008   2          if ((NULL != pCur->pName) && (0 == CU_compare_strings(pCur->pName, szTestName))) {
+1009   3            pTest = pCur;
+1010   3            break;
+1011   3          }
+1012   2          pCur = pCur->pNext;
+1013   2        }
+1014   1      
+1015   1        return pTest;
+1016   1      }
+1017          
+1018          /*------------------------------------------------------------------------*/
+1019          CU_pTest CU_get_test_by_index(unsigned int index, CU_pSuite pSuite)
+1020          {
+1021   1        CU_pTest result = NULL;
+1022   1        unsigned int i;
+1023   1      
+1024   1        assert(NULL != pSuite);
+1025   1      
+1026   1        if ((index > 0) && (index <= pSuite->uiNumberOfTests)) {
+1027   2          result = pSuite->pTest;
+1028   2          for (i=1 ; i<index ; ++i) {
+1029   3            result = result->pNext;
+1030   3          }
+1031   2        }
+1032   1      
+1033   1        return result;
+1034   1      }
+1035          /** @} */
+1036          
+1037          /*------------------------------------------------------------------------*/
+1038          /*------------------------------------------------------------------------*/
+1039          #ifdef CUNIT_BUILD_TESTS
+              #include "test_cunit.h"
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 18  
+
+              
+              static int sfunc1(void)
+              { return 0; }
+              
+              static void test1(void)
+              {}
+              
+              static void test2(void)
+              {}
+              
+              /*--------------------------------------------------*/
+              static void test_CU_initialize_registry(void)
+              {
+                CU_pTestRegistry pReg = NULL;
+                unsigned int ndeallocs_before;
+              
+                /* initial state */
+                TEST(NULL == CU_get_registry());
+                TEST(CU_FALSE == CU_registry_initialized());
+              
+                /* after normal initialization */
+                TEST(CUE_SUCCESS == CU_initialize_registry());
+                pReg = CU_get_registry();
+                TEST_FATAL(NULL != pReg);
+                TEST(CU_TRUE == CU_registry_initialized());
+                TEST(0 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(NULL == pReg->pSuite);
+              
+                /* after reinitialization */
+                TEST(0 < test_cunit_get_n_memevents(pReg));
+                ndeallocs_before = test_cunit_get_n_deallocations(pReg);
+                TEST(CUE_SUCCESS == CU_initialize_registry());
+                TEST((ndeallocs_before + 1) == test_cunit_get_n_deallocations(pReg));
+                pReg = CU_get_registry();
+                TEST_FATAL(NULL != pReg);
+                TEST(0 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(NULL == pReg->pSuite);
+              
+                /* after cleanup */
+                CU_cleanup_registry();
+                TEST(NULL == CU_get_registry());
+                TEST(CU_FALSE == CU_registry_initialized());
+              
+                /* if malloc fails */
+                test_cunit_deactivate_malloc();
+                TEST(CUE_NOMEMORY == CU_initialize_registry());
+                TEST(NULL == CU_get_registry());
+                TEST(CU_FALSE == CU_registry_initialized());
+                test_cunit_activate_malloc();
+              }
+              
+              /*--------------------------------------------------*/
+              static void test_CU_cleanup_registry(void)
+              {
+                /* make sure calling with uninitialized registry does not crash */
+                CU_cleanup_registry();
+                CU_cleanup_registry();
+                CU_cleanup_registry();
+                CU_cleanup_registry();
+                CU_cleanup_registry();
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 19  
+
+              
+                /* nothing more to do over test_CU_initialize_registry() */
+              }
+              
+              /*--------------------------------------------------*/
+              /* test CU_add_suite()
+               *      CU_get_suite_by_name()
+               *      CU_get_suite_by_index()
+               */
+              static void test_CU_add_suite(void)
+              {
+                CU_pSuite pSuite = NULL;
+                CU_pSuite pSuite2 = NULL;
+                CU_pSuite pSuite3 = NULL;
+                CU_pSuite pSuite4 = NULL;
+                CU_pTestRegistry pReg = NULL;
+              
+                CU_cleanup_registry();  /* make sure registry not initialized */
+              
+                /* error condition - registry not initialized */
+                pSuite = CU_add_suite("suite1", NULL, NULL);
+                TEST(CUE_NOREGISTRY == CU_get_error());
+                TEST(NULL == pSuite);
+              
+                /* error condition - no name */
+                CU_initialize_registry();
+                pReg = CU_get_registry();
+              
+                pSuite = CU_add_suite(NULL, NULL, NULL);
+                TEST(CUE_NO_SUITENAME == CU_get_error());
+                TEST(NULL == pSuite);
+                TEST(0 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+              
+                /* warning condition - duplicate name */
+                CU_initialize_registry();
+                pReg = CU_get_registry();
+              
+                pSuite = CU_add_suite("suite1", NULL, NULL);
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL != pSuite);
+                TEST(1 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+              
+                pSuite2 = CU_add_suite("suite1", NULL, NULL);
+                TEST(CUE_DUP_SUITE == CU_get_error());
+                TEST(NULL != pSuite2);
+                TEST(2 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+              
+                TEST(!strcmp("suite1", pSuite->pName));
+                TEST(pSuite->fActive == CU_TRUE);         /* suite active on creation */
+                TEST(pSuite->pTest == NULL);              /* no tests added yet */
+                TEST(pSuite->uiNumberOfTests == 0);       /* no tests added yet */
+                TEST(pSuite->pInitializeFunc == NULL);    /* no init function */
+                TEST(pSuite->pCleanupFunc == NULL);       /* no cleanup function */
+                TEST(pSuite->pNext == pSuite2);           /* now have another suite */
+              
+                TEST(!strcmp("suite1", pSuite2->pName));
+                TEST(pSuite2->fActive == CU_TRUE);        /* suite active on creation */
+                TEST(pSuite2->pTest == NULL);             /* no tests added yet */
+                TEST(pSuite2->uiNumberOfTests == 0);      /* no tests added yet */
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 20  
+
+                TEST(pSuite2->pInitializeFunc == NULL);   /* no init function */
+                TEST(pSuite2->pCleanupFunc == NULL);      /* no cleanup function */
+                TEST(pSuite2->pNext == NULL);             /* end of the list */
+              
+                /* error condition - memory allocation failure */
+                CU_initialize_registry();
+                pReg = CU_get_registry();
+              
+                test_cunit_deactivate_malloc();
+                pSuite = CU_add_suite("suite1", NULL, NULL);
+                TEST(CUE_NOMEMORY == CU_get_error());
+                TEST(NULL == pSuite);
+                TEST(0 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                test_cunit_activate_malloc();
+              
+                /* normal creation & cleanup */
+                CU_initialize_registry();
+                pReg = CU_get_registry();
+              
+                TEST(CU_get_suite_by_index(0, pReg) == NULL);
+                TEST(CU_get_suite_by_index(1, pReg) == NULL);
+              
+                pSuite = CU_add_suite("suite1", NULL, NULL);
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL != pSuite);
+                TEST(1 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(CU_get_suite_by_name("suite1", pReg) == pSuite);
+                TEST(CU_get_suite_by_index(0, pReg) == NULL);
+                TEST(CU_get_suite_by_index(1, pReg) == pSuite);
+                TEST(CU_get_suite_by_index(2, pReg) == NULL);
+                TEST(pReg->pSuite == pSuite);
+              
+                TEST(!strcmp("suite1", pSuite->pName));
+                TEST(pSuite->fActive == CU_TRUE);       /* suite active on creation */
+                TEST(pSuite->pTest == NULL);            /* no tests added yet */
+                TEST(pSuite->uiNumberOfTests == 0);     /* no tests added yet */
+                TEST(pSuite->pInitializeFunc == NULL);  /* no init function */
+                TEST(pSuite->pCleanupFunc == NULL);     /* no cleanup function */
+                TEST(pSuite->pNext == NULL);            /* no more suites added yet */
+              
+                pSuite2 = CU_add_suite("suite2", sfunc1, NULL);
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL != pSuite2);
+                TEST(2 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(CU_get_suite_by_name("suite2", pReg) == pSuite2);
+                TEST(CU_get_suite_by_index(0, pReg) == NULL);
+                TEST(CU_get_suite_by_index(1, pReg) == pSuite);
+                TEST(CU_get_suite_by_index(2, pReg) == pSuite2);
+                TEST(CU_get_suite_by_index(3, pReg) == NULL);
+              
+                pSuite3 = CU_add_suite("suite3", NULL, sfunc1);
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL != pSuite3);
+                TEST(3 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(CU_get_suite_by_name("suite3", pReg) == pSuite3);
+                TEST(CU_get_suite_by_index(0, pReg) == NULL);
+                TEST(CU_get_suite_by_index(1, pReg) == pSuite);
+                TEST(CU_get_suite_by_index(2, pReg) == pSuite2);
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 21  
+
+                TEST(CU_get_suite_by_index(3, pReg) == pSuite3);
+                TEST(CU_get_suite_by_index(4, pReg) == NULL);
+              
+                pSuite4 = CU_add_suite("suite4", sfunc1, sfunc1);
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL != pSuite4);
+                TEST(4 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(CU_get_suite_by_name("suite4", pReg) == pSuite4);
+                TEST(CU_get_suite_by_index(0, pReg) == NULL);
+                TEST(CU_get_suite_by_index(1, pReg) == pSuite);
+                TEST(CU_get_suite_by_index(2, pReg) == pSuite2);
+                TEST(CU_get_suite_by_index(3, pReg) == pSuite3);
+                TEST(CU_get_suite_by_index(4, pReg) == pSuite4);
+                TEST(CU_get_suite_by_index(5, pReg) == NULL);
+              
+                /* test registry suite structures */
+                TEST(pReg->pSuite == pSuite);
+              
+                TEST(!strcmp("suite1", pSuite->pName));
+                TEST(pSuite->fActive == CU_TRUE);         /* suite active on creation */
+                TEST(pSuite->pTest == NULL);              /* no tests added yet */
+                TEST(pSuite->uiNumberOfTests == 0);       /* no tests added yet */
+                TEST(pSuite->pInitializeFunc == NULL);    /* no init function */
+                TEST(pSuite->pCleanupFunc == NULL);       /* no cleanup function */
+                TEST(pSuite->pNext == pSuite2);           /* now have another suite */
+              
+                TEST(!strcmp("suite2", pSuite2->pName));
+                TEST(pSuite2->fActive == CU_TRUE);        /* suite active on creation */
+                TEST(pSuite2->pTest == NULL);             /* no tests added yet */
+                TEST(pSuite2->uiNumberOfTests == 0);      /* no tests added yet */
+                TEST(pSuite2->pInitializeFunc == sfunc1); /* no init function */
+                TEST(pSuite2->pCleanupFunc == NULL);      /* no cleanup function */
+                TEST(pSuite2->pNext == pSuite3);          /* next suite in list */
+              
+                TEST(!strcmp("suite3", pSuite3->pName));
+                TEST(pSuite3->fActive == CU_TRUE);        /* suite active on creation */
+                TEST(pSuite3->pTest == NULL);             /* no tests added yet */
+                TEST(pSuite3->uiNumberOfTests == 0);      /* no tests added yet */
+                TEST(pSuite3->pInitializeFunc == NULL);   /* no init function */
+                TEST(pSuite3->pCleanupFunc == sfunc1);    /* no cleanup function */
+                TEST(pSuite3->pNext == pSuite4);          /* next suite in list */
+              
+                TEST(!strcmp("suite4", pSuite4->pName));
+                TEST(pSuite4->fActive == CU_TRUE);        /* suite active on creation */
+                TEST(pSuite4->pTest == NULL);             /* no tests added yet */
+                TEST(pSuite4->uiNumberOfTests == 0);      /* no tests added yet */
+                TEST(pSuite4->pInitializeFunc == sfunc1); /* no init function */
+                TEST(pSuite4->pCleanupFunc == sfunc1);    /* no cleanup function */
+                TEST(pSuite4->pNext == NULL);             /* end of suite list */
+              
+                TEST(0 != test_cunit_get_n_memevents(pSuite));
+                TEST(0 != test_cunit_get_n_memevents(pSuite2));
+                TEST(0 != test_cunit_get_n_memevents(pSuite3));
+                TEST(0 != test_cunit_get_n_memevents(pSuite4));
+              
+                TEST(test_cunit_get_n_allocations(pSuite) != test_cunit_get_n_deallocations(pSuite));
+                TEST(test_cunit_get_n_allocations(pSuite2) != test_cunit_get_n_deallocations(pSuite2));
+                TEST(test_cunit_get_n_allocations(pSuite3) != test_cunit_get_n_deallocations(pSuite3));
+                TEST(test_cunit_get_n_allocations(pSuite4) != test_cunit_get_n_deallocations(pSuite4));
+              
+                /* clean up everything and confirm deallocation */
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 22  
+
+                CU_cleanup_registry();
+              
+                TEST(test_cunit_get_n_allocations(pSuite) == test_cunit_get_n_deallocations(pSuite));
+                TEST(test_cunit_get_n_allocations(pSuite2) == test_cunit_get_n_deallocations(pSuite2));
+                TEST(test_cunit_get_n_allocations(pSuite3) == test_cunit_get_n_deallocations(pSuite3));
+                TEST(test_cunit_get_n_allocations(pSuite4) == test_cunit_get_n_deallocations(pSuite4));
+              }
+              
+              /*--------------------------------------------------*/
+              /* test CU_set_suite_active()
+               *      CU_set_suite_name()
+               *      CU_set_suite_initfunc()
+               *      CU_set_suite_cleanupfunc()
+               */
+              static void test_CU_set_suite_attributes(void)
+              {
+                CU_pSuite pSuite1 = NULL;
+                CU_pSuite pSuite2 = NULL;
+              
+                /* initialize system */
+                CU_initialize_registry();
+              
+                pSuite1 = CU_add_suite("suite1", NULL, NULL);
+                TEST_FATAL(NULL != pSuite1);
+                TEST_FATAL(NULL != CU_add_test(pSuite1, "test1", test1));
+                TEST_FATAL(NULL != CU_add_test(pSuite1, "test2", test1));
+              
+                pSuite2 = CU_add_suite("suite2", sfunc1, NULL); /* add another suite */
+                TEST_FATAL(NULL != pSuite2);
+                TEST_FATAL(NULL != CU_add_test(pSuite2, "test1", test1));
+                TEST_FATAL(NULL != CU_add_test(pSuite2, "test2", test1));
+              
+                /* test CU_set_suite_active() */
+                TEST(CUE_NOSUITE == CU_set_suite_active(NULL, CU_FALSE));  /* error - NULL suite */
+              
+                TEST(pSuite2->fActive == CU_TRUE);       /* suites active on creation */
+                TEST(pSuite1->fActive == CU_TRUE);
+              
+                TEST(CUE_SUCCESS == CU_set_suite_active(pSuite1, CU_TRUE));
+                TEST(CUE_SUCCESS == CU_set_suite_active(pSuite2, CU_FALSE));
+                TEST(pSuite1->fActive == CU_TRUE);
+                TEST(pSuite2->fActive == CU_FALSE);
+              
+                TEST(CUE_SUCCESS == CU_set_suite_active(pSuite1, CU_FALSE));
+                TEST(CUE_SUCCESS == CU_set_suite_active(pSuite2, CU_FALSE));
+                TEST(pSuite1->fActive == CU_FALSE);
+                TEST(pSuite2->fActive == CU_FALSE);
+              
+                TEST(CUE_SUCCESS == CU_set_suite_active(pSuite1, CU_FALSE));
+                TEST(CUE_SUCCESS == CU_set_suite_active(pSuite2, CU_TRUE));
+                TEST(pSuite1->fActive == CU_FALSE);
+                TEST(pSuite2->fActive == CU_TRUE);
+              
+                /* test CU_set_suite_name() */
+                TEST(CUE_NOSUITE == CU_set_suite_name(NULL, "null suite"));  /* error - NULL suite */
+                TEST(CUE_NO_SUITENAME == CU_set_suite_name(pSuite1, NULL));  /* error - NULL name */
+              
+                TEST(!strcmp(pSuite1->pName, "suite1"));
+                TEST(!strcmp(pSuite2->pName, "suite2"));
+                TEST(CUE_SUCCESS == CU_set_suite_name(pSuite1, "This is my new name."));
+                TEST(!strcmp(pSuite1->pName, "This is my new name."));
+                TEST(!strcmp(pSuite2->pName, "suite2"));
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 23  
+
+              
+                TEST(CUE_SUCCESS == CU_set_suite_name(pSuite2, "Never mind."));
+                TEST(!strcmp(pSuite1->pName, "This is my new name."));
+                TEST(!strcmp(pSuite2->pName, "Never mind."));
+              
+                TEST(CUE_SUCCESS == CU_set_suite_name(pSuite1, "suite1"));
+                TEST(CUE_SUCCESS == CU_set_suite_name(pSuite2, "suite2"));
+                TEST(!strcmp(pSuite1->pName, "suite1"));
+                TEST(!strcmp(pSuite2->pName, "suite2"));
+              
+                /* test CU_set_suite_initfunc() */
+                TEST(CUE_NOSUITE == CU_set_suite_initfunc(NULL, &sfunc1));  /* error - NULL suite */
+              
+                TEST(pSuite1->pInitializeFunc == NULL);
+                TEST(pSuite2->pInitializeFunc == &sfunc1);
+                TEST(CUE_SUCCESS == CU_set_suite_initfunc(pSuite1, &sfunc1));
+                TEST(pSuite1->pInitializeFunc == &sfunc1);
+                TEST(pSuite2->pInitializeFunc == &sfunc1);
+              
+                TEST(CUE_SUCCESS == CU_set_suite_initfunc(pSuite2, NULL));
+                TEST(pSuite1->pInitializeFunc == &sfunc1);
+                TEST(pSuite2->pInitializeFunc == NULL);
+              
+                /* test CU_set_suite_cleanupfunc() */
+                TEST(CUE_NOSUITE == CU_set_suite_cleanupfunc(NULL, &sfunc1));
+              
+                TEST(pSuite1->pCleanupFunc == NULL);
+                TEST(pSuite2->pCleanupFunc == NULL);
+                TEST(CUE_SUCCESS == CU_set_suite_cleanupfunc(pSuite1, &sfunc1));
+                TEST(pSuite1->pCleanupFunc == &sfunc1);
+                TEST(pSuite2->pCleanupFunc == NULL);
+              
+                TEST(CUE_SUCCESS == CU_set_suite_cleanupfunc(pSuite2, &sfunc1));
+                TEST(pSuite1->pCleanupFunc == &sfunc1);
+                TEST(pSuite2->pCleanupFunc == &sfunc1);
+              
+                /* clean up */
+                CU_cleanup_registry();
+              }
+              
+              static void test_succeed(void) { CU_TEST(CU_TRUE); }
+              static void test_fail(void) { CU_TEST(CU_FALSE); }
+              static int suite_fail(void) { return 1; }
+              
+              /*--------------------------------------------------*/
+              /* test CU_get_suite()
+               *      CU_get_suite_at_pos()
+               *      CU_get_suite_pos()
+               *      CU_get_suite_pos_by_name()
+               */
+              static void test_get_suite_functions(void)
+              {
+                CU_pSuite pSuite1 = NULL;
+                CU_pSuite pSuite2 = NULL;
+                CU_pSuite pSuite3 = NULL;
+                CU_pSuite pSuite4 = NULL;
+                CU_pSuite pSuite5 = NULL;
+                CU_pTest pTest1 = NULL;
+                CU_pTest pTest2 = NULL;
+                CU_pTest pTest3 = NULL;
+                CU_pTest pTest4 = NULL;
+                CU_pTest pTest5 = NULL;
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 24  
+
+                CU_pTest pTest6 = NULL;
+                CU_pTest pTest7 = NULL;
+                CU_pTest pTest8 = NULL;
+                CU_pTest pTest9 = NULL;
+                CU_pTest pTest10 = NULL;
+              
+                /* error condition - registry not initialized */
+                CU_cleanup_registry();
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(NULL == CU_get_suite("suite1"));
+                TEST(CUE_NOREGISTRY == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(NULL == CU_get_suite_at_pos(0));
+                TEST(CUE_NOREGISTRY == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(0 == CU_get_suite_pos(pSuite1));
+                TEST(CUE_NOREGISTRY == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(0 == CU_get_suite_pos_by_name("suite1"));
+                TEST(CUE_NOREGISTRY == CU_get_error());
+              
+                /* register some suites and tests */
+                CU_initialize_registry();
+                pSuite1 = CU_add_suite("suite1", NULL, NULL);
+                pTest1 = CU_add_test(pSuite1, "test1", test_succeed);
+                pTest2 = CU_add_test(pSuite1, "test2", test_fail);
+                pTest3 = CU_add_test(pSuite1, "test1", test_succeed); /* duplicate test name */
+                pTest4 = CU_add_test(pSuite1, "test4", test_fail);
+                pTest5 = CU_add_test(pSuite1, "test1", test_succeed); /* duplicate test name */
+                pSuite2 = CU_add_suite("suite2", suite_fail, NULL);
+                pTest6 = CU_add_test(pSuite2, "test6", test_succeed);
+                pTest7 = CU_add_test(pSuite2, "test7", test_succeed);
+                pSuite3 = CU_add_suite("suite1", NULL, NULL);         /* duplicate suite name */
+                pTest8 = CU_add_test(pSuite3, "test8", test_fail);
+                pTest9 = CU_add_test(pSuite3, "test9", test_succeed);
+                pSuite4 = CU_add_suite("suite4", NULL, suite_fail);
+                pTest10 = CU_add_test(pSuite4, "test10", test_succeed);
+              
+                /* error condition - invalid parameters */
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(NULL == CU_get_suite(NULL));
+                TEST(CUE_NO_SUITENAME == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(0 == CU_get_suite_pos(NULL));
+                TEST(CUE_NOSUITE == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(0 == CU_get_suite_pos_by_name(NULL));
+                TEST(CUE_NO_SUITENAME == CU_get_error());
+              
+                /* normal operation - CU_get_suite() */
+              
+                TEST(NULL == CU_get_suite(""));             /* invalid names */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL == CU_get_suite("bad name"));
+                TEST(CUE_SUCCESS == CU_get_error());
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 25  
+
+                TEST(NULL == CU_get_suite("suite3"));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                TEST(pSuite1 == CU_get_suite("suite1"));    /* valid names */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pSuite2 == CU_get_suite("suite2"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pSuite4 == CU_get_suite("suite4"));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                /* normal operation - CU_get_suite_at_pos() */
+              
+                TEST(NULL == CU_get_suite_at_pos(0));      /* invalid positions */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL == CU_get_suite_at_pos(5));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                TEST(pSuite1 == CU_get_suite_at_pos(1));    /* valid positions */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pSuite2 == CU_get_suite_at_pos(2));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pSuite3 == CU_get_suite_at_pos(3));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pSuite4 == CU_get_suite_at_pos(4));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                /* normal operation - CU_get_suite_pos() */
+              
+                pSuite5 = (CU_pSuite)malloc(sizeof(CU_Suite));
+                TEST_FATAL(NULL != pSuite5);
+              
+                TEST(0 == CU_get_suite_pos(pSuite5));       /* invalid suite */
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                TEST(1 == CU_get_suite_pos(pSuite1));       /* valid suites */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(2 == CU_get_suite_pos(pSuite2));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(3 == CU_get_suite_pos(pSuite3));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(4 == CU_get_suite_pos(pSuite4));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                free(pSuite5);
+              
+                /* normal operation - CU_get_suite_pos_by_name() */
+              
+                TEST(0 == CU_get_suite_pos_by_name(""));        /* invalid names */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(0 == CU_get_suite_pos_by_name("suite3"));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                TEST(1 == CU_get_suite_pos_by_name("suite1"));  /* valid suites */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(2 == CU_get_suite_pos_by_name("suite2"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(4 == CU_get_suite_pos_by_name("suite4"));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                /* clean up */
+                CU_cleanup_registry();
+              }
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 26  
+
+              
+              /*--------------------------------------------------*/
+              /* test CU_add_test()
+               *      CU_get_test_by_name()
+               *      CU_get_test_by_index()
+               */
+              static void test_CU_add_test(void)
+              {
+                CU_pSuite pSuite1 = NULL;
+                CU_pSuite pSuite2 = NULL;
+                CU_pTest pTest1 = NULL;
+                CU_pTest pTest2 = NULL;
+                CU_pTest pTest3 = NULL;
+                CU_pTest pTest4 = NULL;
+                CU_pTestRegistry pReg = NULL;
+              
+                CU_cleanup_registry();
+              
+                /* error condition - registry not initialized */
+                pTest1 = CU_add_test(pSuite1, "test1", test1);
+                TEST(CUE_NOREGISTRY == CU_get_error());
+                TEST(NULL == pTest1);
+              
+                CU_initialize_registry();
+                pReg = CU_get_registry();
+              
+                /* error condition - no suite */
+                pTest1 = CU_add_test(pSuite1, "test1", test1);
+                TEST(CUE_NOSUITE == CU_get_error());
+                TEST(NULL == pTest1);
+              
+                /* error condition - no name */
+                pSuite1 = CU_add_suite("suite1", NULL, NULL);
+                TEST(CUE_SUCCESS == CU_get_error());
+                pTest1 = CU_add_test(pSuite1, NULL, test1);
+                TEST(CUE_NO_TESTNAME == CU_get_error());
+                TEST(NULL == pTest1);
+                TEST(1 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(0 == pSuite1->uiNumberOfTests);
+              
+                /* error condition - no test function */
+                pTest1 = CU_add_test(pSuite1, "test1", NULL);
+                TEST(CUE_NOTEST == CU_get_error());
+                TEST(NULL == pTest1);
+                TEST(1 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(0 == pSuite1->uiNumberOfTests);
+              
+                /* warning condition - duplicate name */
+                CU_initialize_registry();
+                pReg = CU_get_registry();
+              
+                pSuite1 = CU_add_suite("suite1", NULL, NULL);
+                TEST(CUE_SUCCESS == CU_get_error());
+                pTest1 = CU_add_test(pSuite1, "test1", test1);
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL != pTest1);
+                TEST(1 == pReg->uiNumberOfSuites);
+                TEST(1 == pReg->uiNumberOfTests);
+                TEST(1 == pSuite1->uiNumberOfTests);
+                TEST(CU_get_test_by_index(0, pSuite1) == NULL);
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 27  
+
+                TEST(CU_get_test_by_index(1, pSuite1) == pTest1);
+                TEST(CU_get_test_by_index(2, pSuite1) == NULL);
+              
+                pTest2 = CU_add_test(pSuite1, "test1", test1);
+                TEST(CUE_DUP_TEST == CU_get_error());
+                TEST(NULL != pTest2);
+                TEST(1 == pReg->uiNumberOfSuites);
+                TEST(2 == pReg->uiNumberOfTests);
+                TEST(2 == pSuite1->uiNumberOfTests);
+              
+                TEST(!strcmp("test1", pTest1->pName));
+                TEST(pTest1->fActive == CU_TRUE);
+                TEST(pTest1->pNext == pTest2);
+                TEST(pTest1->pJumpBuf == NULL);
+                TEST(pTest1->pTestFunc == test1);
+                TEST(CU_get_test_by_name("test1", pSuite1) == pTest1);
+                TEST(CU_get_test_by_index(0, pSuite1) == NULL);
+                TEST(CU_get_test_by_index(1, pSuite1) == pTest1);
+                TEST(CU_get_test_by_index(2, pSuite1) == pTest2);
+                TEST(CU_get_test_by_index(3, pSuite1) == NULL);
+              
+                TEST(!strcmp("test1", pTest2->pName));
+                TEST(pTest2->fActive == CU_TRUE);
+                TEST(pTest2->pNext == NULL);
+                TEST(pTest2->pJumpBuf == NULL);
+                TEST(pTest2->pTestFunc == test1);
+                TEST(CU_get_test_by_name("test1", pSuite1) == pTest1);
+              
+                /* error condition - memory allocation failure */
+                CU_initialize_registry();
+                pReg = CU_get_registry();
+              
+                pSuite1 = CU_add_suite("suite1", NULL, NULL);
+                TEST(CUE_SUCCESS == CU_get_error());
+                test_cunit_deactivate_malloc();
+                pTest1 = CU_add_test(pSuite1, "test1", test1);
+                test_cunit_activate_malloc();
+                TEST(CUE_NOMEMORY == CU_get_error());
+                TEST(NULL == pTest1);
+                TEST(1 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(0 == pSuite1->uiNumberOfTests);
+              
+                /* normal creation & cleanup */
+                CU_initialize_registry();
+                pReg = CU_get_registry();
+              
+                pSuite1 = CU_add_suite("suite1", NULL, NULL);
+                TEST(CUE_SUCCESS == CU_get_error());
+                pSuite2 = CU_add_suite("suite2", sfunc1, sfunc1);
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                TEST(CU_get_test_by_index(0, pSuite1) == NULL);
+                TEST(CU_get_test_by_index(1, pSuite1) == NULL);
+              
+                pTest1 = CU_add_test(pSuite1, "test1", test1);
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL != pTest1);
+                TEST(2 == pReg->uiNumberOfSuites);
+                TEST(1 == pReg->uiNumberOfTests);
+                TEST(1 == pSuite1->uiNumberOfTests);
+                TEST(0 == pSuite2->uiNumberOfTests);
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 28  
+
+                TEST(pSuite1->pTest == pTest1);
+                TEST(pSuite2->pTest == NULL);
+                TEST(CU_get_test_by_index(0, pSuite1) == NULL);
+                TEST(CU_get_test_by_index(1, pSuite1) == pTest1);
+                TEST(CU_get_test_by_index(2, pSuite1) == NULL);
+              
+                pTest2 = CU_add_test(pSuite2, "test2", test1);
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL != pTest2);
+                TEST(2 == pReg->uiNumberOfSuites);
+                TEST(2 == pReg->uiNumberOfTests);
+                TEST(1 == pSuite1->uiNumberOfTests);
+                TEST(1 == pSuite2->uiNumberOfTests);
+                TEST(pSuite1->pTest == pTest1);
+                TEST(pSuite2->pTest == pTest2);
+                TEST(CU_get_test_by_index(0, pSuite2) == NULL);
+                TEST(CU_get_test_by_index(1, pSuite2) == pTest2);
+                TEST(CU_get_test_by_index(2, pSuite2) == NULL);
+              
+                pTest3 = CU_add_test(pSuite1, "test3", test1);
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL != pTest3);
+                TEST(2 == pReg->uiNumberOfSuites);
+                TEST(3 == pReg->uiNumberOfTests);
+                TEST(2 == pSuite1->uiNumberOfTests);
+                TEST(1 == pSuite2->uiNumberOfTests);
+                TEST(pSuite1->pTest == pTest1);
+                TEST(pSuite2->pTest == pTest2);
+                TEST(CU_get_test_by_index(0, pSuite1) == NULL);
+                TEST(CU_get_test_by_index(1, pSuite1) == pTest1);
+                TEST(CU_get_test_by_index(2, pSuite1) == pTest3);
+                TEST(CU_get_test_by_index(3, pSuite1) == NULL);
+              
+                pTest4 = CU_add_test(pSuite1, "test4", test1);
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL != pTest4);
+                TEST(2 == pReg->uiNumberOfSuites);
+                TEST(4 == pReg->uiNumberOfTests);
+                TEST(3 == pSuite1->uiNumberOfTests);
+                TEST(1 == pSuite2->uiNumberOfTests);
+                TEST(pSuite1->pTest == pTest1);
+                TEST(pSuite2->pTest == pTest2);
+                TEST(CU_get_test_by_index(0, pSuite1) == NULL);
+                TEST(CU_get_test_by_index(1, pSuite1) == pTest1);
+                TEST(CU_get_test_by_index(2, pSuite1) == pTest3);
+                TEST(CU_get_test_by_index(3, pSuite1) == pTest4);
+                TEST(CU_get_test_by_index(4, pSuite1) == NULL);
+              
+                TEST(!strcmp("test1", pTest1->pName));
+                TEST(pTest1->pNext == pTest3);
+                TEST(pTest1->pJumpBuf == NULL);
+                TEST(pTest1->pTestFunc == test1);
+                TEST(CU_get_test_by_name("test1", pSuite1) == pTest1);
+                TEST(CU_get_test_by_name("test1", pSuite2) == NULL);
+              
+                TEST(!strcmp("test2", pTest2->pName));
+                TEST(pTest2->pNext == NULL);
+                TEST(pTest2->pJumpBuf == NULL);
+                TEST(pTest2->pTestFunc == test1);
+                TEST(CU_get_test_by_name("test2", pSuite1) == NULL);
+                TEST(CU_get_test_by_name("test2", pSuite2) == pTest2);
+              
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 29  
+
+                TEST(!strcmp("test3", pTest3->pName));
+                TEST(pTest3->pNext == pTest4);
+                TEST(pTest3->pJumpBuf == NULL);
+                TEST(pTest3->pTestFunc == test1);
+                TEST(CU_get_test_by_name("test3", pSuite1) == pTest3);
+                TEST(CU_get_test_by_name("test3", pSuite2) == NULL);
+              
+                TEST(!strcmp("test4", pTest4->pName));
+                TEST(pTest4->pNext == NULL);
+                TEST(pTest4->pJumpBuf == NULL);
+                TEST(pTest4->pTestFunc == test1);
+                TEST(CU_get_test_by_name("test4", pSuite1) == pTest4);
+                TEST(CU_get_test_by_name("test4", pSuite2) == NULL);
+              
+                TEST(0 != test_cunit_get_n_memevents(pSuite1));
+                TEST(0 != test_cunit_get_n_memevents(pSuite2));
+                TEST(0 != test_cunit_get_n_memevents(pTest1));
+                TEST(0 != test_cunit_get_n_memevents(pTest2));
+                TEST(0 != test_cunit_get_n_memevents(pTest3));
+                TEST(0 != test_cunit_get_n_memevents(pTest4));
+              
+                TEST(test_cunit_get_n_allocations(pSuite1) != test_cunit_get_n_deallocations(pSuite1));
+                TEST(test_cunit_get_n_allocations(pSuite2) != test_cunit_get_n_deallocations(pSuite2));
+                TEST(test_cunit_get_n_allocations(pTest1) != test_cunit_get_n_deallocations(pTest1));
+                TEST(test_cunit_get_n_allocations(pTest2) != test_cunit_get_n_deallocations(pTest2));
+                TEST(test_cunit_get_n_allocations(pTest3) != test_cunit_get_n_deallocations(pTest3));
+                TEST(test_cunit_get_n_allocations(pTest4) != test_cunit_get_n_deallocations(pTest4));
+              
+                CU_cleanup_registry();
+              
+                TEST(test_cunit_get_n_allocations(pSuite1) == test_cunit_get_n_deallocations(pSuite1));
+                TEST(test_cunit_get_n_allocations(pSuite2) == test_cunit_get_n_deallocations(pSuite2));
+                TEST(test_cunit_get_n_allocations(pTest1) == test_cunit_get_n_deallocations(pTest1));
+                TEST(test_cunit_get_n_allocations(pTest2) == test_cunit_get_n_deallocations(pTest2));
+                TEST(test_cunit_get_n_allocations(pTest3) == test_cunit_get_n_deallocations(pTest3));
+                TEST(test_cunit_get_n_allocations(pTest4) == test_cunit_get_n_deallocations(pTest4));
+              }
+              
+              /*--------------------------------------------------*/
+              /* test CU_set_test_active()
+               *      CU_set_test_name()
+               *      CU_set_test_func()
+               */
+              static void test_CU_set_test_attributes(void)
+              {
+                CU_pSuite pSuite1 = NULL;
+                CU_pSuite pSuite2 = NULL;
+                CU_pTest pTest1 = NULL;
+                CU_pTest pTest2 = NULL;
+                CU_pTest pTest3 = NULL;
+                CU_pTest pTest4 = NULL;
+              
+                /* initialize system */
+                CU_initialize_registry();
+              
+                pSuite1 = CU_add_suite("suite1", NULL, NULL);
+                TEST_FATAL(NULL != pSuite1);
+                pTest1 = CU_add_test(pSuite1, "test1", test2);
+                TEST_FATAL(NULL != pTest1);
+                pTest2 = CU_add_test(pSuite1, "test2", test1);
+                TEST_FATAL(NULL != pTest2);
+              
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 30  
+
+                pSuite2 = CU_add_suite("suite2", sfunc1, NULL); /* add another suite */
+                TEST_FATAL(NULL != pSuite2);
+                pTest3 = CU_add_test(pSuite2, "test3", test2);
+                TEST_FATAL(NULL != pTest3);
+                pTest4 = CU_add_test(pSuite2, "test4", test1);
+                TEST_FATAL(NULL != pTest4);
+              
+                /* test CU_set_test_active() */
+                TEST(CUE_NOTEST == CU_set_test_active(NULL, CU_FALSE)); /* error - NULL test */
+              
+                TEST(CU_TRUE == pTest1->fActive);       /* tests active on creation */
+                TEST(CU_TRUE == pTest2->fActive);
+                TEST(CU_TRUE == pTest3->fActive);
+                TEST(CU_TRUE == pTest4->fActive);
+              
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest1, CU_TRUE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest2, CU_TRUE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest3, CU_FALSE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest4, CU_FALSE));
+                TEST(CU_TRUE == pTest1->fActive);
+                TEST(CU_TRUE == pTest2->fActive);
+                TEST(CU_FALSE == pTest3->fActive);
+                TEST(CU_FALSE == pTest4->fActive);
+              
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest1, CU_FALSE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest2, CU_TRUE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest3, CU_TRUE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest4, CU_FALSE));
+                TEST(CU_FALSE == pTest1->fActive);
+                TEST(CU_TRUE == pTest2->fActive);
+                TEST(CU_TRUE == pTest3->fActive);
+                TEST(CU_FALSE == pTest4->fActive);
+              
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest1, CU_FALSE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest2, CU_FALSE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest3, CU_FALSE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest4, CU_FALSE));
+                TEST(CU_FALSE == pTest1->fActive);
+                TEST(CU_FALSE == pTest2->fActive);
+                TEST(CU_FALSE == pTest3->fActive);
+                TEST(CU_FALSE == pTest4->fActive);
+              
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest1, CU_TRUE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest2, CU_TRUE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest3, CU_TRUE));
+                TEST(CUE_SUCCESS == CU_set_test_active(pTest4, CU_TRUE));
+                TEST(CU_TRUE == pTest1->fActive);
+                TEST(CU_TRUE == pTest2->fActive);
+                TEST(CU_TRUE == pTest3->fActive);
+                TEST(CU_TRUE == pTest4->fActive);
+              
+                /* test CU_set_test_name() */
+                TEST(CUE_NOTEST == CU_set_test_name(NULL, "null test"));  /* error - NULL test */
+                TEST(CUE_NO_TESTNAME == CU_set_test_name(pTest1, NULL));  /* error - NULL name */
+              
+                TEST(!strcmp("test1", pTest1->pName));
+                TEST(!strcmp("test2", pTest2->pName));
+                TEST(!strcmp("test3", pTest3->pName));
+                TEST(!strcmp("test4", pTest4->pName));
+              
+                TEST(CUE_SUCCESS == CU_set_test_name(pTest1, "Aren't I a pretty girl?"));
+                TEST(CUE_SUCCESS == CU_set_test_name(pTest2, "Polly want a cracker."));
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 31  
+
+                TEST(CUE_SUCCESS == CU_set_test_name(pTest3, "@This is utter nonsense@"));
+                TEST(CUE_SUCCESS == CU_set_test_name(pTest4, "Yep!"));
+              
+                TEST(!strcmp("Aren't I a pretty girl?", pTest1->pName));
+                TEST(!strcmp("Polly want a cracker.", pTest2->pName));
+                TEST(!strcmp("@This is utter nonsense@", pTest3->pName));
+                TEST(!strcmp("Yep!", pTest4->pName));
+              
+                TEST(CUE_SUCCESS == CU_set_test_name(pTest1, "test1"));
+                TEST(CUE_SUCCESS == CU_set_test_name(pTest2, "test2"));
+                TEST(CUE_SUCCESS == CU_set_test_name(pTest3, "test3"));
+                TEST(CUE_SUCCESS == CU_set_test_name(pTest4, "test4"));
+              
+                TEST(!strcmp("test1", pTest1->pName));
+                TEST(!strcmp("test2", pTest2->pName));
+                TEST(!strcmp("test3", pTest3->pName));
+                TEST(!strcmp("test4", pTest4->pName));
+              
+                /* test CU_set_test_func() */
+                TEST(CUE_NOTEST == CU_set_test_func(NULL, &test1));   /* error - NULL test */
+                TEST(CUE_NOTEST == CU_set_test_func(pTest1, NULL));   /* error - NULL test function */
+              
+                TEST(&test2 == pTest1->pTestFunc);
+                TEST(&test1 == pTest2->pTestFunc);
+                TEST(&test2 == pTest3->pTestFunc);
+                TEST(&test1 == pTest4->pTestFunc);
+              
+                TEST(CUE_SUCCESS == CU_set_test_func(pTest1, &test1));
+                TEST(CUE_SUCCESS == CU_set_test_func(pTest2, &test2));
+                TEST(CUE_SUCCESS == CU_set_test_func(pTest3, &test1));
+                TEST(CUE_SUCCESS == CU_set_test_func(pTest4, &test2));
+              
+                TEST(&test1 == pTest1->pTestFunc);
+                TEST(&test2 == pTest2->pTestFunc);
+                TEST(&test1 == pTest3->pTestFunc);
+                TEST(&test2 == pTest4->pTestFunc);
+              
+                TEST(CUE_SUCCESS == CU_set_test_func(pTest1, &test2));
+                TEST(CUE_SUCCESS == CU_set_test_func(pTest2, &test1));
+                TEST(CUE_SUCCESS == CU_set_test_func(pTest3, &test2));
+                TEST(CUE_SUCCESS == CU_set_test_func(pTest4, &test1));
+              
+                /* clean up */
+                CU_cleanup_registry();
+              }
+              
+              /*--------------------------------------------------*/
+              /* test CU_get_test()
+               *      CU_get_test_at_pos()
+               *      CU_get_test_pos()
+               *      CU_get_test_pos_by_name()
+               */
+              static void test_get_test_functions(void)
+              {
+                CU_pSuite pSuite1 = NULL;
+                CU_pSuite pSuite2 = NULL;
+                CU_pSuite pSuite3 = NULL;
+                CU_pSuite pSuite4 = NULL;
+                CU_pTest pTest1 = NULL;
+                CU_pTest pTest2 = NULL;
+                CU_pTest pTest3 = NULL;
+                CU_pTest pTest4 = NULL;
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 32  
+
+                CU_pTest pTest5 = NULL;
+                CU_pTest pTest6 = NULL;
+                CU_pTest pTest7 = NULL;
+                CU_pTest pTest8 = NULL;
+                CU_pTest pTest9 = NULL;
+                CU_pTest pTest10 = NULL;
+              
+                /* error condition - registry not initialized */
+                CU_cleanup_registry();
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(NULL == CU_get_test(pSuite1, "test1"));
+                TEST(CUE_NOREGISTRY == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(NULL == CU_get_test_at_pos(pSuite1, 0));
+                TEST(CUE_NOREGISTRY == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(0 == CU_get_test_pos(pSuite1, pTest1));
+                TEST(CUE_NOREGISTRY == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(0 == CU_get_test_pos_by_name(pSuite1, "test1"));
+                TEST(CUE_NOREGISTRY == CU_get_error());
+              
+                /* register some suites and tests */
+                CU_initialize_registry();
+                pSuite1 = CU_add_suite("suite1", NULL, NULL);
+                pTest1 = CU_add_test(pSuite1, "test1", test_succeed);
+                pTest2 = CU_add_test(pSuite1, "test2", test_fail);
+                pTest3 = CU_add_test(pSuite1, "test1", test_succeed); /* duplicate test name */
+                pTest4 = CU_add_test(pSuite1, "test4", test_fail);
+                pTest5 = CU_add_test(pSuite1, "test1", test_succeed); /* duplicate test name */
+                pSuite2 = CU_add_suite("suite2", suite_fail, NULL);
+                pTest6 = CU_add_test(pSuite2, "test6", test_succeed);
+                pTest7 = CU_add_test(pSuite2, "test7", test_succeed);
+                pSuite3 = CU_add_suite("suite1", NULL, NULL);         /* duplicate suite name */
+                pTest8 = CU_add_test(pSuite3, "test8", test_fail);
+                pTest9 = CU_add_test(pSuite3, "test9", test_succeed);
+                pSuite4 = CU_add_suite("suite4", NULL, suite_fail);
+                pTest10 = CU_add_test(pSuite4, "test10", test_succeed);
+              
+                /* error condition - invalid parameters */
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(NULL == CU_get_test(NULL, "test1"));           /* suite NULL */
+                TEST(CUE_NOSUITE == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(NULL == CU_get_test(pSuite1, NULL));           /* name NULL */
+                TEST(CUE_NO_SUITENAME == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(0 == CU_get_test_at_pos(NULL, 1));             /* suite NULL */
+                TEST(CUE_NOSUITE == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(0 == CU_get_test_pos(NULL, pTest1));           /* suite NULL */
+                TEST(CUE_NOSUITE == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 33  
+
+                TEST(0 == CU_get_test_pos(pSuite1, NULL));          /* test NULL */
+                TEST(CUE_NOTEST == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(0 == CU_get_test_pos_by_name(NULL, "test1"));  /* suite NULL */
+                TEST(CUE_NOSUITE == CU_get_error());
+              
+                CU_set_error(CUE_SUCCESS);
+                TEST(0 == CU_get_test_pos_by_name(pSuite1, NULL));  /* name NULL */
+                TEST(CUE_NO_TESTNAME == CU_get_error());
+              
+                /* normal operation - CU_get_test() */
+              
+                TEST(NULL == CU_get_test(pSuite1, ""));             /* invalid names */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL == CU_get_test(pSuite2, "bad name"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL == CU_get_test(pSuite1, "test3"));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                TEST(pTest1 == CU_get_test(pSuite1, "test1"));      /* valid names */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest6 == CU_get_test(pSuite2, "test6"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest8 == CU_get_test(pSuite3, "test8"));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                /* normal operation - CU_get_test_at_pos() */
+              
+                TEST(NULL == CU_get_test_at_pos(pSuite1, 0));       /* invalid positions */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL == CU_get_test_at_pos(pSuite1, 6));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(NULL == CU_get_test_at_pos(pSuite4, 2));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                TEST(pTest1 == CU_get_test_at_pos(pSuite1, 1));     /* valid positions */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest2 == CU_get_test_at_pos(pSuite1, 2));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest3 == CU_get_test_at_pos(pSuite1, 3));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest4 == CU_get_test_at_pos(pSuite1, 4));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest5 == CU_get_test_at_pos(pSuite1, 5));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest6 == CU_get_test_at_pos(pSuite2, 1));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest7 == CU_get_test_at_pos(pSuite2, 2));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest8 == CU_get_test_at_pos(pSuite3, 1));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest9 == CU_get_test_at_pos(pSuite3, 2));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(pTest10 == CU_get_test_at_pos(pSuite4, 1));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                /* normal operation - CU_get_test_pos() */
+              
+                TEST(0 == CU_get_test_pos(pSuite1, pTest6));        /* invalid tests */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(0 == CU_get_test_pos(pSuite4, pTest6));
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 34  
+
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                TEST(1 == CU_get_test_pos(pSuite1, pTest1));       /* valid tests */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(2 == CU_get_test_pos(pSuite1, pTest2));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(3 == CU_get_test_pos(pSuite1, pTest3));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(4 == CU_get_test_pos(pSuite1, pTest4));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(5 == CU_get_test_pos(pSuite1, pTest5));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(1 == CU_get_test_pos(pSuite2, pTest6));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(2 == CU_get_test_pos(pSuite2, pTest7));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(1 == CU_get_test_pos(pSuite3, pTest8));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(2 == CU_get_test_pos(pSuite3, pTest9));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(1 == CU_get_test_pos(pSuite4, pTest10));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                /* normal operation - CU_get_test_pos_by_name() */
+              
+                TEST(0 == CU_get_test_pos_by_name(pSuite1, ""));        /* invalid names */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(0 == CU_get_test_pos_by_name(pSuite1, "test9"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(0 == CU_get_test_pos_by_name(pSuite2, "test1"));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                TEST(1 == CU_get_test_pos_by_name(pSuite1, "test1"));  /* valid names */
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(2 == CU_get_test_pos_by_name(pSuite1, "test2"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(4 == CU_get_test_pos_by_name(pSuite1, "test4"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(1 == CU_get_test_pos_by_name(pSuite2, "test6"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(2 == CU_get_test_pos_by_name(pSuite2, "test7"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(1 == CU_get_test_pos_by_name(pSuite3, "test8"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(2 == CU_get_test_pos_by_name(pSuite3, "test9"));
+                TEST(CUE_SUCCESS == CU_get_error());
+                TEST(1 == CU_get_test_pos_by_name(pSuite4, "test10"));
+                TEST(CUE_SUCCESS == CU_get_error());
+              
+                /* clean up */
+                CU_cleanup_registry();
+              }
+              
+              /*--------------------------------------------------*/
+              static void test_CU_get_registry(void)
+              {
+                CU_cleanup_registry();
+                TEST(NULL == CU_get_registry());
+              
+                CU_initialize_registry();
+                TEST(NULL != CU_get_registry());
+                TEST(f_pTestRegistry == CU_get_registry());
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 35  
+
+              
+                CU_cleanup_registry();
+              }
+              
+              /*--------------------------------------------------*/
+              static void test_CU_set_registry(void)
+              {
+                CU_pTestRegistry pReg1 = NULL;
+                CU_pTestRegistry pReg2 = NULL;
+                CU_pSuite pSuite1 = NULL;
+                CU_pSuite pSuite2 = NULL;
+              
+                CU_initialize_registry();
+                pSuite1 = CU_add_suite("suite1", NULL, NULL);
+                pSuite2 = CU_add_suite("suite2", NULL, NULL);
+              
+                CU_add_test(pSuite1, "test1", test1);
+                CU_add_test(pSuite1, "test2", test1);
+                CU_add_test(pSuite2, "test1", test1);
+                CU_add_test(pSuite2, "test2", test1);
+              
+                pReg1 = CU_get_registry();
+              
+                TEST(pReg1->pSuite == pSuite1);
+                TEST(pReg1->uiNumberOfSuites == 2);
+                TEST(pReg1->uiNumberOfTests == 4);
+                TEST(0 < test_cunit_get_n_memevents(pReg1));
+                TEST(test_cunit_get_n_allocations(pReg1) != test_cunit_get_n_deallocations(pReg1));
+              
+                CU_set_registry(NULL);
+              
+                TEST(test_cunit_get_n_allocations(pReg1) != test_cunit_get_n_deallocations(pReg1));
+              
+                CU_cleanup_registry();
+              
+                TEST(test_cunit_get_n_allocations(pReg1) != test_cunit_get_n_deallocations(pReg1));
+              
+                pReg2 = CU_create_new_registry();
+                CU_set_registry(pReg2);
+              
+                TEST(pReg1->pSuite == pSuite1);
+                TEST(pReg1->uiNumberOfSuites == 2);
+                TEST(pReg1->uiNumberOfTests == 4);
+                TEST(test_cunit_get_n_allocations(pReg1) != test_cunit_get_n_deallocations(pReg1));
+              
+                TEST(CU_get_registry()->pSuite == NULL);
+                TEST(CU_get_registry()->uiNumberOfSuites == 0);
+                TEST(CU_get_registry()->uiNumberOfTests == 0);
+                TEST(0 < test_cunit_get_n_memevents(pReg2));
+                TEST(test_cunit_get_n_allocations(pReg2) != test_cunit_get_n_deallocations(pReg2));
+              
+                CU_cleanup_registry();
+              
+                TEST(pReg1->pSuite == pSuite1);
+                TEST(pReg1->uiNumberOfSuites == 2);
+                TEST(pReg1->uiNumberOfTests == 4);
+                TEST(test_cunit_get_n_allocations(pReg1) != test_cunit_get_n_deallocations(pReg1));
+                TEST(test_cunit_get_n_allocations(pReg2) == test_cunit_get_n_deallocations(pReg2));
+              
+                CU_set_registry(pReg1);
+                CU_cleanup_registry();
+                TEST(test_cunit_get_n_allocations(pReg1) == test_cunit_get_n_deallocations(pReg1));
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 36  
+
+              }
+              
+              /*--------------------------------------------------*/
+              /* test CU_create_new_registry()
+               *      CU_destroy_existing_registry()
+               */
+              static void test_CU_create_new_registry(void)
+              {
+                CU_pTestRegistry pReg = NULL;
+                CU_pTestRegistry pRegOld = NULL;
+              
+                CU_cleanup_registry();
+                pReg = CU_create_new_registry();
+              
+                TEST(NULL != pReg);
+                TEST(0 < test_cunit_get_n_memevents(pReg));
+                TEST(test_cunit_get_n_allocations(pReg) != test_cunit_get_n_deallocations(pReg));
+              
+                TEST(pReg->pSuite == NULL);
+                TEST(pReg->uiNumberOfSuites == 0);
+                TEST(pReg->uiNumberOfTests == 0);
+              
+                CU_cleanup_registry();
+                TEST(test_cunit_get_n_allocations(pReg) != test_cunit_get_n_deallocations(pReg));
+              
+                pRegOld = pReg;
+                CU_destroy_existing_registry(&pReg);
+                TEST(test_cunit_get_n_allocations(pRegOld) == test_cunit_get_n_deallocations(pRegOld));
+                TEST(NULL == pReg);
+              }
+              
+              /*--------------------------------------------------*/
+              static void test_cleanup_test_registry(void)
+              {
+                CU_pSuite pSuite1 = NULL;
+                CU_pSuite pSuite2 = NULL;
+                CU_pTest pTest1 = NULL;
+                CU_pTest pTest2 = NULL;
+                CU_pTest pTest3 = NULL;
+                CU_pTest pTest4 = NULL;
+                CU_pTestRegistry pReg = CU_create_new_registry();
+              
+                TEST_FATAL(NULL != pReg);
+                TEST(0 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+              
+                /* create tests to register */
+                pTest1 = create_test("test1", test1);
+                pTest2 = create_test("test2", NULL);
+                pTest3 = create_test("test3", test1);
+                pTest4 = create_test("", NULL);
+              
+                /* create suites to hold tests */
+                pSuite1 = create_suite("suite1", NULL, NULL, NULL, NULL);
+                pSuite2 = create_suite("suite2", sfunc1, sfunc1, NULL, NULL);
+                insert_suite(pReg, pSuite1);
+                insert_suite(pReg, pSuite2);
+              
+                insert_test(pSuite1, pTest1);
+                insert_test(pSuite1, pTest2);
+                insert_test(pSuite1, pTest3);
+                insert_test(pSuite2, pTest4);
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 37  
+
+              
+                TEST(2 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);   /* not managed in primitive functions */
+                TEST(3 == pSuite1->uiNumberOfTests);
+                TEST(1 == pSuite2->uiNumberOfTests);
+                TEST(pSuite1->pTest == pTest1);
+                TEST(pSuite2->pTest == pTest4);
+                TEST(pTest1->pNext == pTest2);
+                TEST(pTest1->pPrev == NULL);
+                TEST(pTest2->pNext == pTest3);
+                TEST(pTest2->pPrev == pTest1);
+                TEST(pTest3->pNext == NULL);
+                TEST(pTest3->pPrev == pTest2);
+                TEST(pTest4->pNext == NULL);
+                TEST(pTest4->pPrev == NULL);
+              
+                TEST(0 != test_cunit_get_n_memevents(pReg));
+                TEST(0 != test_cunit_get_n_memevents(pSuite1));
+                TEST(0 != test_cunit_get_n_memevents(pSuite2));
+                TEST(0 != test_cunit_get_n_memevents(pTest1));
+                TEST(0 != test_cunit_get_n_memevents(pTest2));
+                TEST(0 != test_cunit_get_n_memevents(pTest3));
+                TEST(0 != test_cunit_get_n_memevents(pTest4));
+              
+                TEST(test_cunit_get_n_allocations(pReg) != test_cunit_get_n_deallocations(pReg));
+                TEST(test_cunit_get_n_allocations(pSuite1) != test_cunit_get_n_deallocations(pSuite1));
+                TEST(test_cunit_get_n_allocations(pSuite2) != test_cunit_get_n_deallocations(pSuite2));
+                TEST(test_cunit_get_n_allocations(pTest1) != test_cunit_get_n_deallocations(pTest1));
+                TEST(test_cunit_get_n_allocations(pTest2) != test_cunit_get_n_deallocations(pTest2));
+                TEST(test_cunit_get_n_allocations(pTest3) != test_cunit_get_n_deallocations(pTest3));
+                TEST(test_cunit_get_n_allocations(pTest4) != test_cunit_get_n_deallocations(pTest4));
+              
+                cleanup_test_registry(pReg);
+                CU_FREE(pReg);
+              
+                TEST(test_cunit_get_n_allocations(pReg) == test_cunit_get_n_deallocations(pReg));
+                TEST(test_cunit_get_n_allocations(pSuite1) == test_cunit_get_n_deallocations(pSuite1));
+                TEST(test_cunit_get_n_allocations(pSuite2) == test_cunit_get_n_deallocations(pSuite2));
+                TEST(test_cunit_get_n_allocations(pTest1) == test_cunit_get_n_deallocations(pTest1));
+                TEST(test_cunit_get_n_allocations(pTest2) == test_cunit_get_n_deallocations(pTest2));
+                TEST(test_cunit_get_n_allocations(pTest3) == test_cunit_get_n_deallocations(pTest3));
+                TEST(test_cunit_get_n_allocations(pTest4) == test_cunit_get_n_deallocations(pTest4));
+              }
+              
+              /*--------------------------------------------------*/
+              /* test create_suite()
+               *      cleanup_suite()
+               */
+              static void test_create_suite(void)
+              {
+                CU_pSuite pSuite1 = NULL;
+                CU_pSuite pSuite2 = NULL;
+                CU_pSuite pSuite3 = NULL;
+                CU_pSuite pSuite4 = NULL;
+              
+                /* error condition - memory allocation failure */
+                test_cunit_deactivate_malloc();
+                pSuite1 = create_suite("suite1", NULL, NULL, NULL, NULL);
+                TEST(NULL == pSuite1);
+                test_cunit_activate_malloc();
+              
+                /* normal creation & cleanup */
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 38  
+
+                pSuite1 = create_suite("suite1", NULL, NULL, NULL, NULL);
+                TEST(NULL != pSuite1);
+                TEST(!strcmp("suite1", pSuite1->pName));
+                TEST(pSuite1->pTest == NULL);            /* no tests added yet */
+                TEST(pSuite1->uiNumberOfTests == 0);     /* no tests added yet */
+                TEST(pSuite1->pInitializeFunc == NULL);  /* no init function */
+                TEST(pSuite1->pCleanupFunc == NULL);     /* no cleanup function */
+                TEST(pSuite1->pNext == NULL);            /* no more suites added yet */
+              
+                pSuite2 = create_suite("suite2", sfunc1, NULL, NULL, NULL);
+                TEST(NULL != pSuite2);
+                TEST(!strcmp("suite2", pSuite2->pName));
+                TEST(pSuite2->pTest == NULL);             /* no tests added yet */
+                TEST(pSuite2->uiNumberOfTests == 0);      /* no tests added yet */
+                TEST(pSuite2->pInitializeFunc == sfunc1); /* init function */
+                TEST(pSuite2->pCleanupFunc == NULL);      /* no cleanup function */
+                TEST(pSuite2->pNext == NULL);             /* no more suites added yet */
+              
+                pSuite3 = create_suite("suite3", NULL, sfunc1, NULL, NULL);
+                TEST(NULL != pSuite3);
+                TEST(!strcmp("suite3", pSuite3->pName));
+                TEST(pSuite3->pTest == NULL);            /* no tests added yet */
+                TEST(pSuite3->uiNumberOfTests == 0);     /* no tests added yet */
+                TEST(pSuite3->pInitializeFunc == NULL);  /* no init function */
+                TEST(pSuite3->pCleanupFunc == sfunc1);   /* cleanup function */
+                TEST(pSuite3->pNext == NULL);            /* no more suites added yet */
+              
+                pSuite4 = create_suite("suite4", sfunc1, sfunc1, NULL, NULL);
+                TEST(NULL != pSuite4);
+                TEST(!strcmp("suite4", pSuite4->pName));
+                TEST(pSuite4->pTest == NULL);             /* no tests added yet */
+                TEST(pSuite4->uiNumberOfTests == 0);      /* no tests added yet */
+                TEST(pSuite4->pInitializeFunc == sfunc1); /* no init function */
+                TEST(pSuite4->pCleanupFunc == sfunc1);    /* cleanup function */
+                TEST(pSuite4->pNext == NULL);             /* no more suites added yet */
+              
+                TEST(0 != test_cunit_get_n_memevents(pSuite1));
+                TEST(test_cunit_get_n_allocations(pSuite1) != test_cunit_get_n_deallocations(pSuite1));
+                cleanup_suite(pSuite1);
+                CU_FREE(pSuite1);
+                TEST(test_cunit_get_n_allocations(pSuite1) == test_cunit_get_n_deallocations(pSuite1));
+              
+                TEST(0 != test_cunit_get_n_memevents(pSuite2));
+                TEST(test_cunit_get_n_allocations(pSuite2) != test_cunit_get_n_deallocations(pSuite2));
+                cleanup_suite(pSuite2);
+                CU_FREE(pSuite2);
+                TEST(test_cunit_get_n_allocations(pSuite2) == test_cunit_get_n_deallocations(pSuite2));
+              
+                TEST(0 != test_cunit_get_n_memevents(pSuite3));
+                TEST(test_cunit_get_n_allocations(pSuite3) != test_cunit_get_n_deallocations(pSuite3));
+                cleanup_suite(pSuite3);
+                CU_FREE(pSuite3);
+                TEST(test_cunit_get_n_allocations(pSuite3) == test_cunit_get_n_deallocations(pSuite3));
+              
+                TEST(0 != test_cunit_get_n_memevents(pSuite4));
+                TEST(test_cunit_get_n_allocations(pSuite4) != test_cunit_get_n_deallocations(pSuite4));
+                cleanup_suite(pSuite4);
+                CU_FREE(pSuite4);
+                TEST(test_cunit_get_n_allocations(pSuite4) == test_cunit_get_n_deallocations(pSuite4));
+              }
+              
+              /*--------------------------------------------------*/
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 39  
+
+              /* test   insert_suite()
+               *        suite_exists()
+               */
+              static void test_insert_suite(void)
+              {
+                CU_pSuite pSuite1 = NULL;
+                CU_pSuite pSuite2 = NULL;
+                CU_pSuite pSuite3 = NULL;
+                CU_pSuite pSuite4 = NULL;
+                CU_pTestRegistry pReg = CU_create_new_registry();
+              
+                TEST_FATAL(NULL != pReg);
+                TEST(0 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(NULL == pReg->pSuite);
+                TEST(CU_FALSE == suite_exists(pReg, "suite1"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite2"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite3"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite4"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite5"));
+                TEST(CU_FALSE == suite_exists(pReg, ""));
+              
+                /* normal creation & cleanup */
+                pSuite1 = create_suite("suite1", NULL, NULL, NULL, NULL);
+                insert_suite(pReg, pSuite1);
+                TEST(1 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(pReg->pSuite == pSuite1);
+                TEST(pSuite1->pNext == NULL);
+                TEST(CU_TRUE == suite_exists(pReg, "suite1"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite2"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite3"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite4"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite5"));
+                TEST(CU_FALSE == suite_exists(pReg, ""));
+              
+                pSuite2 = create_suite("suite2", sfunc1, NULL, NULL, NULL);
+                insert_suite(pReg, pSuite2);
+                TEST(2 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(pReg->pSuite == pSuite1);
+                TEST(pSuite1->pNext == pSuite2);
+                TEST(pSuite2->pNext == NULL);
+                TEST(CU_TRUE == suite_exists(pReg, "suite1"));
+                TEST(CU_TRUE == suite_exists(pReg, "suite2"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite3"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite4"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite5"));
+                TEST(CU_FALSE == suite_exists(pReg, ""));
+              
+                pSuite3 = create_suite("suite3", NULL, sfunc1, NULL, NULL);
+                insert_suite(pReg, pSuite3);
+                TEST(3 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(pReg->pSuite == pSuite1);
+                TEST(pSuite1->pNext == pSuite2);
+                TEST(pSuite2->pNext == pSuite3);
+                TEST(pSuite3->pNext == NULL);
+                TEST(CU_TRUE == suite_exists(pReg, "suite1"));
+                TEST(CU_TRUE == suite_exists(pReg, "suite2"));
+                TEST(CU_TRUE == suite_exists(pReg, "suite3"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite4"));
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 40  
+
+                TEST(CU_FALSE == suite_exists(pReg, "suite5"));
+                TEST(CU_FALSE == suite_exists(pReg, ""));
+              
+                pSuite4 = create_suite("suite4", sfunc1, sfunc1, NULL, NULL);
+                insert_suite(pReg, pSuite4);
+                TEST(4 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+                TEST(pReg->pSuite == pSuite1);
+                TEST(pSuite1->pNext == pSuite2);
+                TEST(pSuite2->pNext == pSuite3);
+                TEST(pSuite3->pNext == pSuite4);
+                TEST(pSuite4->pNext == NULL);
+                TEST(CU_TRUE == suite_exists(pReg, "suite1"));
+                TEST(CU_TRUE == suite_exists(pReg, "suite2"));
+                TEST(CU_TRUE == suite_exists(pReg, "suite3"));
+                TEST(CU_TRUE == suite_exists(pReg, "suite4"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite5"));
+                TEST(CU_FALSE == suite_exists(pReg, ""));
+              
+                TEST(0 != test_cunit_get_n_memevents(pReg));
+                TEST(0 != test_cunit_get_n_memevents(pSuite1));
+                TEST(0 != test_cunit_get_n_memevents(pSuite2));
+                TEST(0 != test_cunit_get_n_memevents(pSuite3));
+                TEST(0 != test_cunit_get_n_memevents(pSuite4));
+              
+                TEST(test_cunit_get_n_allocations(pReg) != test_cunit_get_n_deallocations(pReg));
+                TEST(test_cunit_get_n_allocations(pSuite1) != test_cunit_get_n_deallocations(pSuite1));
+                TEST(test_cunit_get_n_allocations(pSuite2) != test_cunit_get_n_deallocations(pSuite2));
+                TEST(test_cunit_get_n_allocations(pSuite3) != test_cunit_get_n_deallocations(pSuite3));
+                TEST(test_cunit_get_n_allocations(pSuite4) != test_cunit_get_n_deallocations(pSuite4));
+              
+                cleanup_test_registry(pReg);
+                TEST(CU_FALSE == suite_exists(pReg, "suite1"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite2"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite3"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite4"));
+                TEST(CU_FALSE == suite_exists(pReg, "suite5"));
+                TEST(CU_FALSE == suite_exists(pReg, ""));
+                CU_FREE(pReg);
+              
+                TEST(test_cunit_get_n_allocations(pReg) == test_cunit_get_n_deallocations(pReg));
+                TEST(test_cunit_get_n_allocations(pSuite1) == test_cunit_get_n_deallocations(pSuite1));
+                TEST(test_cunit_get_n_allocations(pSuite2) == test_cunit_get_n_deallocations(pSuite2));
+                TEST(test_cunit_get_n_allocations(pSuite3) == test_cunit_get_n_deallocations(pSuite3));
+                TEST(test_cunit_get_n_allocations(pSuite4) == test_cunit_get_n_deallocations(pSuite4));
+              }
+              
+              /*--------------------------------------------------*/
+              static void test_create_test(void)
+              {
+                CU_pTest pTest1 = NULL;
+                CU_pTest pTest2 = NULL;
+              
+                /* error condition - memory allocation failure */
+                test_cunit_deactivate_malloc();
+                pTest1 = create_test("test1", test1);
+                test_cunit_activate_malloc();
+                TEST(NULL == pTest1);
+              
+                /* normal creation & cleanup */
+                pTest1 = create_test("test1", test1);
+                TEST(NULL != pTest1);
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 41  
+
+                TEST(pTest1->pTestFunc == test1);
+                TEST(!strcmp("test1", pTest1->pName));
+                TEST(pTest1->pNext == NULL);
+                TEST(pTest1->pPrev == NULL);
+                TEST(pTest1->pJumpBuf == NULL);
+              
+                pTest2= create_test("test2", NULL);
+                TEST(NULL != pTest2);
+                TEST(pTest2->pTestFunc == NULL);
+                TEST(!strcmp("test2", pTest2->pName));
+                TEST(pTest2->pNext == NULL);
+                TEST(pTest2->pPrev == NULL);
+                TEST(pTest2->pJumpBuf == NULL);
+              
+                TEST(0 != test_cunit_get_n_memevents(pTest1));
+                TEST(0 != test_cunit_get_n_memevents(pTest2));
+              
+                TEST(test_cunit_get_n_allocations(pTest1) != test_cunit_get_n_deallocations(pTest1));
+                TEST(test_cunit_get_n_allocations(pTest2) != test_cunit_get_n_deallocations(pTest2));
+              
+                cleanup_test(pTest1);
+                CU_FREE(pTest1);
+                cleanup_test(pTest2);
+                CU_FREE(pTest2);
+              
+                TEST(test_cunit_get_n_allocations(pTest1) == test_cunit_get_n_deallocations(pTest1));
+                TEST(test_cunit_get_n_allocations(pTest2) == test_cunit_get_n_deallocations(pTest2));
+              }
+              
+              /*--------------------------------------------------*/
+              /* test   insert_test()
+               *        test_exists()
+               */
+              static void test_insert_test(void)
+              {
+                CU_pSuite pSuite1 = NULL;
+                CU_pSuite pSuite2 = NULL;
+                CU_pTest pTest1 = NULL;
+                CU_pTest pTest2 = NULL;
+                CU_pTest pTest3 = NULL;
+                CU_pTest pTest4 = NULL;
+              
+                /* create tests to register */
+                pTest1 = create_test("test1", test1);
+                pTest2 = create_test("test2", NULL);
+                pTest3 = create_test("test3", test1);
+                pTest4 = create_test("", NULL);
+              
+                /* create suites to hold tests */
+                pSuite1 = create_suite("suite1", NULL, NULL, NULL, NULL);
+                pSuite2 = create_suite("suite2", sfunc1, sfunc1, NULL, NULL);
+              
+                TEST(CU_FALSE == test_exists(pSuite1, "test1"));
+                TEST(CU_FALSE == test_exists(pSuite1, "test2"));
+                TEST(CU_FALSE == test_exists(pSuite1, "test3"));
+                TEST(CU_FALSE == test_exists(pSuite1, "test4"));
+                TEST(CU_FALSE == test_exists(pSuite1, ""));
+                TEST(CU_FALSE == test_exists(pSuite2, "test1"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test2"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test3"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test4"));
+                TEST(CU_FALSE == test_exists(pSuite2, ""));
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 42  
+
+              
+                insert_test(pSuite1, pTest1);
+                insert_test(pSuite1, pTest2);
+                insert_test(pSuite1, pTest3);
+                insert_test(pSuite2, pTest4);
+              
+                TEST(CU_TRUE == test_exists(pSuite1, "test1"));
+                TEST(CU_TRUE == test_exists(pSuite1, "test2"));
+                TEST(CU_TRUE == test_exists(pSuite1, "test3"));
+                TEST(CU_FALSE == test_exists(pSuite1, "test4"));
+                TEST(CU_FALSE == test_exists(pSuite1, ""));
+                TEST(CU_FALSE == test_exists(pSuite2, "test1"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test2"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test3"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test4"));
+                TEST(CU_TRUE == test_exists(pSuite2, ""));
+              
+                TEST(3 == pSuite1->uiNumberOfTests);
+                TEST(1 == pSuite2->uiNumberOfTests);
+                TEST(pSuite1->pTest == pTest1);
+                TEST(pSuite2->pTest == pTest4);
+                TEST(pTest1->pNext == pTest2);
+                TEST(pTest1->pPrev == NULL);
+                TEST(pTest2->pNext == pTest3);
+                TEST(pTest2->pPrev == pTest1);
+                TEST(pTest3->pNext == NULL);
+                TEST(pTest3->pPrev == pTest2);
+                TEST(pTest4->pNext == NULL);
+                TEST(pTest4->pPrev == NULL);
+              
+                TEST(0 != test_cunit_get_n_memevents(pSuite1));
+                TEST(0 != test_cunit_get_n_memevents(pSuite2));
+                TEST(0 != test_cunit_get_n_memevents(pTest1));
+                TEST(0 != test_cunit_get_n_memevents(pTest2));
+                TEST(0 != test_cunit_get_n_memevents(pTest3));
+                TEST(0 != test_cunit_get_n_memevents(pTest4));
+              
+                TEST(test_cunit_get_n_allocations(pSuite1) != test_cunit_get_n_deallocations(pSuite1));
+                TEST(test_cunit_get_n_allocations(pSuite2) != test_cunit_get_n_deallocations(pSuite2));
+                TEST(test_cunit_get_n_allocations(pTest1) != test_cunit_get_n_deallocations(pTest1));
+                TEST(test_cunit_get_n_allocations(pTest2) != test_cunit_get_n_deallocations(pTest2));
+                TEST(test_cunit_get_n_allocations(pTest3) != test_cunit_get_n_deallocations(pTest3));
+                TEST(test_cunit_get_n_allocations(pTest4) != test_cunit_get_n_deallocations(pTest4));
+              
+                cleanup_suite(pSuite1);
+              
+                TEST(CU_FALSE == test_exists(pSuite1, "test1"));
+                TEST(CU_FALSE == test_exists(pSuite1, "test2"));
+                TEST(CU_FALSE == test_exists(pSuite1, "test3"));
+                TEST(CU_FALSE == test_exists(pSuite1, "test4"));
+                TEST(CU_FALSE == test_exists(pSuite1, ""));
+                TEST(CU_FALSE == test_exists(pSuite2, "test1"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test2"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test3"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test4"));
+                TEST(CU_TRUE == test_exists(pSuite2, ""));
+              
+                cleanup_suite(pSuite2);
+              
+                TEST(CU_FALSE == test_exists(pSuite1, "test1"));
+                TEST(CU_FALSE == test_exists(pSuite1, "test2"));
+                TEST(CU_FALSE == test_exists(pSuite1, "test3"));
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 43  
+
+                TEST(CU_FALSE == test_exists(pSuite1, "test4"));
+                TEST(CU_FALSE == test_exists(pSuite1, ""));
+                TEST(CU_FALSE == test_exists(pSuite2, "test1"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test2"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test3"));
+                TEST(CU_FALSE == test_exists(pSuite2, "test4"));
+                TEST(CU_FALSE == test_exists(pSuite2, ""));
+              
+                CU_FREE(pSuite1);
+                CU_FREE(pSuite2);
+              
+                TEST(test_cunit_get_n_allocations(pSuite1) == test_cunit_get_n_deallocations(pSuite1));
+                TEST(test_cunit_get_n_allocations(pSuite2) == test_cunit_get_n_deallocations(pSuite2));
+                TEST(test_cunit_get_n_allocations(pTest1) == test_cunit_get_n_deallocations(pTest1));
+                TEST(test_cunit_get_n_allocations(pTest2) == test_cunit_get_n_deallocations(pTest2));
+                TEST(test_cunit_get_n_allocations(pTest3) == test_cunit_get_n_deallocations(pTest3));
+                TEST(test_cunit_get_n_allocations(pTest4) == test_cunit_get_n_deallocations(pTest4));
+              }
+              
+              /*--------------------------------------------------*/
+              static void test_cleanup_test(void)
+              {
+                char* pName;
+                CU_pTest pTest1 = create_test("test1", NULL);
+              
+                TEST_FATAL(NULL != pTest1);
+              
+                pName = pTest1->pName;
+                TEST(0 != test_cunit_get_n_memevents(pTest1));
+                TEST(0 != test_cunit_get_n_memevents(pName));
+              
+                TEST(test_cunit_get_n_allocations(pTest1) != test_cunit_get_n_deallocations(pTest1));
+                TEST(test_cunit_get_n_allocations(pName) != test_cunit_get_n_deallocations(pName));
+              
+                cleanup_test(pTest1);
+                CU_FREE(pTest1);
+              
+                TEST(test_cunit_get_n_allocations(pTest1) == test_cunit_get_n_deallocations(pTest1));
+                TEST(test_cunit_get_n_allocations(pName) == test_cunit_get_n_deallocations(pName));
+              }
+              
+              /*--------------------------------------------------*/
+              static void group_A_case_1(void)
+              {
+                      CU_ASSERT_TRUE(1);
+              }
+              
+              static void group_A_case_2(void)
+              {
+                      CU_ASSERT_TRUE(2);
+              }
+              
+              static void group_B_case_1(void)
+              {
+                      CU_ASSERT_FALSE(1);
+              }
+              
+              static void group_B_case_2(void)
+              {
+                      CU_ASSERT_FALSE(2);
+              }
+              
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 44  
+
+              static CU_TestInfo group_A_test_cases[] = {
+                      { "1", group_A_case_1 },
+                      { "2", group_A_case_2 },
+                      CU_TEST_INFO_NULL,
+              };
+              
+              static CU_TestInfo group_B_test_cases[] = {
+                      { "1", group_B_case_1 },
+                      { "2", group_B_case_2 },
+                      CU_TEST_INFO_NULL,
+              };
+              
+              static CU_TestInfo group_C_test_cases[] = {
+                      { "1", group_B_case_1 },
+                      { "1", group_B_case_2 },  /* duplicate test name */
+                      CU_TEST_INFO_NULL,
+              };
+              
+              static CU_SuiteInfo suites0[] = {
+                      CU_SUITE_INFO_NULL,
+              };
+              
+              static CU_SuiteInfo suites1[] = {
+                 { "A1", NULL, NULL, NULL, NULL, group_A_test_cases },
+                 { "B1", NULL, NULL, NULL, NULL, group_B_test_cases },
+                      CU_SUITE_INFO_NULL,
+              };
+              
+              static CU_SuiteInfo suites2[] = {
+                 { "A2", NULL, NULL, NULL, NULL, group_A_test_cases },
+                 { "B2", NULL, NULL, NULL, NULL, group_B_test_cases },
+                      CU_SUITE_INFO_NULL,
+              };
+              
+              static CU_SuiteInfo suites3[] = {
+                 { "A3", NULL, NULL, NULL, NULL, group_A_test_cases },
+                 { "A3", NULL, NULL, NULL, NULL, group_C_test_cases },   /* duplicate suite name */
+                      CU_SUITE_INFO_NULL,
+              };
+              
+              static void test_register_suite(void)
+              {
+                CU_pTestRegistry pReg = NULL;
+                CU_ErrorCode status;
+              
+                if (CU_initialize_registry()) {
+                  fprintf(stderr, "\nError initializing registry in test_register_suite().");
+                  return;
+                }
+              
+                pReg = CU_get_registry();
+              
+                /* test initial condition */
+                TEST_FATAL(NULL != pReg);
+                TEST(0 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+              
+                /* test CU_register_suites() with NULL */
+                status = CU_register_suites(NULL);
+                TEST(CUE_SUCCESS == status);
+                TEST(0 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 45  
+
+              
+                /* test CU_register_suites() with empty array */
+                status = CU_register_suites(suites0);
+                TEST(CUE_SUCCESS == status);
+                TEST(0 == pReg->uiNumberOfSuites);
+                TEST(0 == pReg->uiNumberOfTests);
+              
+                /* test CU_register_suites() with ok array */
+                status = CU_register_suites(suites1);
+                TEST(CUE_SUCCESS == status);
+                TEST(2 == pReg->uiNumberOfSuites);
+                TEST(4 == pReg->uiNumberOfTests);
+              
+                /* test CU_register_suites() with duplicate suite name */
+                status = CU_register_suites(suites1);
+                TEST(CUE_SUCCESS == status);  /* shaky - depends on order of operation in CU_register_suites() */
+                TEST(4 == pReg->uiNumberOfSuites);
+                TEST(8 == pReg->uiNumberOfTests);
+              
+                /* test CU_register_suites() with duplicate test name */
+                status = CU_register_suites(suites3);
+                TEST(CUE_DUP_TEST == status);  /* shaky - depends on order of operation in CU_register_suites() */
+                TEST(6 == pReg->uiNumberOfSuites);
+                TEST(12 == pReg->uiNumberOfTests);
+              
+                CU_cleanup_registry();
+              
+                if (CU_initialize_registry()) {
+                  fprintf(stderr, "\nError initializing registry in test_register_suite().");
+                  return;
+                }
+              
+                pReg = CU_get_registry();
+              
+                /* test CU_register_nsuites() with ok arrays */
+                status = CU_register_nsuites(2, suites1, suites2);
+                TEST(CUE_SUCCESS == status);
+                TEST(4 == pReg->uiNumberOfSuites);
+                TEST(8 == pReg->uiNumberOfTests);
+              }
+              
+              /*--------------------------------------------------*/
+              void test_cunit_TestDB(void)
+              {
+                test_cunit_start_tests("TestDB.c");
+              
+                test_CU_initialize_registry();
+                test_CU_cleanup_registry();
+                test_CU_add_suite();
+                test_CU_set_suite_attributes();
+                test_get_suite_functions();
+                test_CU_add_test();
+                test_CU_set_test_attributes();
+                test_get_test_functions();
+                test_CU_get_registry();
+                test_CU_set_registry();
+                test_CU_create_new_registry();
+                test_cleanup_test_registry();
+                test_create_suite();
+                test_insert_suite();
+                test_create_test();
+                test_cleanup_test();
+C51 COMPILER V9.55   TESTDB                                                                08/05/2016 10:32:30 PAGE 46  
+
+                test_insert_test();
+                test_register_suite();
+              
+                test_cunit_end_tests();
+              }
+              
+              #endif    /* CUNIT_BUILD_TESTS */
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   8158    ----
+   CONSTANT SIZE    =    693    ----
+   XDATA SIZE       =      3     345
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

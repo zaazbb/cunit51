@@ -1,0 +1,374 @@
+C51 COMPILER V9.55   BASIC                                                                 08/05/2016 10:32:30 PAGE 1   
+
+
+C51 COMPILER V9.55, COMPILATION OF MODULE BASIC
+OBJECT MODULE PLACED IN .\Objects\Basic.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE ..\..\CUnit-2.1-3\CUnit\Sources\Basic\Basic.c LARGE OPTIMIZE(8,SPEED) BR
+                    -OWSE INCDIR(..\..\CUnit-2.1-3\CUnit\Headers;..\..\CUnit-2.1-3\Examples;..\..\src\inc) DEFINE(stdout=0,stderr=0,FILE=char
+                    -,fprintf=printf,setvbuf,_IONBF=0,exit,EXIT_FAILURE=0,snprintf=sprintf) DEBUG OBJECTEXTEND PRINT(.\Listings\Basic.lst) OB
+                    -JECT(.\Objects\Basic.obj)
+
+line level    source
+
+   1          /*
+   2           *  CUnit - A Unit testing framework library for C.
+   3           *  Copyright (C) 2004-2006  Jerry St.Clair, Anil Kumar
+   4           *
+   5           *  This library is free software; you can redistribute it and/or
+   6           *  modify it under the terms of the GNU Library General Public
+   7           *  License as published by the Free Software Foundation; either
+   8           *  version 2 of the License, or (at your option) any later version.
+   9           *
+  10           *  This library is distributed in the hope that it will be useful,
+  11           *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  12           *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  13           *  Library General Public License for more details.
+  14           *
+  15           *  You should have received a copy of the GNU Library General Public
+  16           *  License along with this library; if not, write to the Free Software
+  17           *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+  18           */
+  19          
+  20          /*
+  21           *  Implementation for basic test runner interface.
+  22           *
+  23           *  11-Aug-2004   Initial implementation of basic test runner interface.  (JDS)
+  24           *
+  25           *  8-Jan-2005    Fixed reporting bug (bug report cunit-Bugs-1093861).  (JDS)
+  26           *
+  27           *  30-Apr-2005   Added notification of suite cleanup failure.  (JDS)
+  28           *
+  29           *  02-May-2006   Added internationalization hooks.  (JDS)
+  30           */
+  31          
+  32          /** @file
+  33           * Basic interface with output to stdout.
+  34           */
+  35          /** @addtogroup Basic
+  36           * @{
+  37           */
+  38          
+  39          #include <stdio.h>
+  40          #include <stdlib.h>
+  41          #include <ctype.h>
+  42          #include <assert.h>
+  43          #include <string.h>
+  44          
+  45          #include "CUnit.h"
+  46          #include "TestDB.h"
+  47          #include "Util.h"
+  48          #include "TestRun.h"
+  49          #include "Basic.h"
+  50          #include "CUnit_intl.h"
+  51          
+  52          /*=================================================================
+C51 COMPILER V9.55   BASIC                                                                 08/05/2016 10:32:30 PAGE 2   
+
+  53           *  Global/Static Definitions
+  54           *=================================================================*/
+  55          /** Pointer to the currently running suite. */
+  56          static CU_pSuite f_pRunningSuite = NULL;
+  57          /** Current run mode. */
+  58          static CU_BasicRunMode f_run_mode = CU_BRM_NORMAL;
+  59          
+  60          /*=================================================================
+  61           *  Forward declaration of module functions *
+  62           *=================================================================*/
+  63          static CU_ErrorCode basic_initialize(void);
+  64          static CU_ErrorCode basic_run_all_tests(CU_pTestRegistry pRegistry);
+  65          static CU_ErrorCode basic_run_suite(CU_pSuite pSuite);
+  66          static CU_ErrorCode basic_run_single_test(CU_pSuite pSuite, CU_pTest pTest);
+  67          
+  68          static void basic_test_start_message_handler(const CU_pTest pTest, const CU_pSuite pSuite);
+  69          static void basic_test_complete_message_handler(const CU_pTest pTest, const CU_pSuite pSuite, const CU_pFa
+             -ilureRecord pFailureList);
+  70          static void basic_all_tests_complete_message_handler(const CU_pFailureRecord pFailure);
+  71          static void basic_suite_init_failure_message_handler(const CU_pSuite pSuite);
+  72          static void basic_suite_cleanup_failure_message_handler(const CU_pSuite pSuite);
+  73          
+  74          /*=================================================================
+  75           *  Public Interface functions
+  76           *=================================================================*/
+  77          CU_ErrorCode CU_basic_run_tests(void)
+  78          {
+  79   1        CU_ErrorCode error;
+  80   1      
+  81   1        if (NULL == CU_get_registry()) {
+  82   2          if (CU_BRM_SILENT != f_run_mode)
+  83   2            fprintf(stderr, "\n\n%s\n", _("FATAL ERROR - Test registry is not initialized."));
+  84   2          error = CUE_NOREGISTRY;
+  85   2        }
+  86   1        else if (CUE_SUCCESS == (error = basic_initialize()))
+  87   1          error = basic_run_all_tests(NULL);
+  88   1      
+  89   1        return error;
+  90   1      }
+  91          
+  92          /*------------------------------------------------------------------------*/
+  93          CU_ErrorCode CU_basic_run_suite(CU_pSuite pSuite)
+  94          {
+  95   1        CU_ErrorCode error;
+  96   1      
+  97   1        if (NULL == pSuite)
+  98   1          error = CUE_NOSUITE;
+  99   1        else if (CUE_SUCCESS == (error = basic_initialize()))
+ 100   1          error = basic_run_suite(pSuite);
+ 101   1      
+ 102   1        return error;
+ 103   1      }
+ 104          
+ 105          /*------------------------------------------------------------------------*/
+ 106          CU_ErrorCode CU_basic_run_test(CU_pSuite pSuite, CU_pTest pTest)
+ 107          {
+ 108   1        CU_ErrorCode error;
+ 109   1      
+ 110   1        if (NULL == pSuite)
+ 111   1          error = CUE_NOSUITE;
+ 112   1        else if (NULL == pTest)
+ 113   1          error = CUE_NOTEST;
+C51 COMPILER V9.55   BASIC                                                                 08/05/2016 10:32:30 PAGE 3   
+
+ 114   1        else if (CUE_SUCCESS == (error = basic_initialize()))
+ 115   1          error = basic_run_single_test(pSuite, pTest);
+ 116   1      
+ 117   1        return error;
+ 118   1      }
+ 119          
+ 120          /*------------------------------------------------------------------------*/
+ 121          void CU_basic_set_mode(CU_BasicRunMode mode)
+ 122          {
+ 123   1        f_run_mode = mode;
+ 124   1      }
+ 125          
+ 126          /*------------------------------------------------------------------------*/
+ 127          CU_BasicRunMode CU_basic_get_mode(void)
+ 128          {
+ 129   1        return f_run_mode;
+ 130   1      }
+ 131          
+ 132          /*------------------------------------------------------------------------*/
+ 133          void CU_basic_show_failures(CU_pFailureRecord pFailure)
+ 134          {
+ 135   1        int i;
+ 136   1      
+ 137   1        for (i = 1 ; (NULL != pFailure) ; pFailure = pFailure->pNext, i++) {
+ 138   2          fprintf(stdout, "\n  %d. %s:%u  - %s", i,
+ 139   2              (NULL != pFailure->strFileName) ? pFailure->strFileName : "",
+ 140   2              pFailure->uiLineNumber,
+ 141   2              (NULL != pFailure->strCondition) ? pFailure->strCondition : "");
+ 142   2        }
+ 143   1      }
+ 144          
+ 145          /*=================================================================
+ 146           *  Static module functions
+ 147           *=================================================================*/
+ 148          /** Performs inialization actions for the basic interface.
+ 149           *  This includes setting output to unbuffered, printing a
+ 150           *  welcome message, and setting the test run handlers.
+ 151           *  @return An error code indicating the framework error condition.
+ 152           */
+ 153          static CU_ErrorCode basic_initialize(void)
+ 154          {
+ 155   1        /* Unbuffered output so everything reaches the screen */
+ 156   1        setvbuf(stdout, NULL, _IONBF, 0);
+*** WARNING C275 IN LINE 156 OF ..\..\CUnit-2.1-3\CUnit\Sources\Basic\Basic.c: expression with possibly no effect
+ 157   1        setvbuf(stderr, NULL, _IONBF, 0);
+*** WARNING C275 IN LINE 157 OF ..\..\CUnit-2.1-3\CUnit\Sources\Basic\Basic.c: expression with possibly no effect
+ 158   1      
+ 159   1        CU_set_error(CUE_SUCCESS);
+ 160   1      
+ 161   1        if (CU_BRM_SILENT != f_run_mode)
+ 162   1          fprintf(stdout, "\n\n     %s" CU_VERSION
+ 163   1                            "\n     %s\n\n",
+ 164   1                          _("CUnit - A unit testing framework for C - Version "),
+ 165   1                          _("http://cunit.sourceforge.net/"));
+ 166   1      
+ 167   1        CU_set_test_start_handler(basic_test_start_message_handler);
+ 168   1        CU_set_test_complete_handler(basic_test_complete_message_handler);
+ 169   1        CU_set_all_test_complete_handler(basic_all_tests_complete_message_handler);
+ 170   1        CU_set_suite_init_failure_handler(basic_suite_init_failure_message_handler);
+ 171   1        CU_set_suite_cleanup_failure_handler(basic_suite_cleanup_failure_message_handler);
+ 172   1      
+ 173   1        return CU_get_error();
+C51 COMPILER V9.55   BASIC                                                                 08/05/2016 10:32:30 PAGE 4   
+
+ 174   1      }
+ 175          
+ 176          /*------------------------------------------------------------------------*/
+ 177          /** Runs all tests within the basic interface.
+ 178           *  If non-NULL, the test registry is changed to the specified registry
+ 179           *  before running the tests, and reset to the original registry when
+ 180           *  done.  If NULL, the default CUnit test registry will be used.
+ 181           *  @param pRegistry The CU_pTestRegistry containing the tests
+ 182           *                   to be run.  If NULL, use the default registry.
+ 183           *  @return An error code indicating the error status
+ 184           *          during the test run.
+ 185           */
+ 186          static CU_ErrorCode basic_run_all_tests(CU_pTestRegistry pRegistry)
+ 187          {
+ 188   1        CU_pTestRegistry pOldRegistry = NULL;
+ 189   1        CU_ErrorCode result;
+ 190   1      
+ 191   1        f_pRunningSuite = NULL;
+ 192   1      
+ 193   1        if (NULL != pRegistry)
+ 194   1          pOldRegistry = CU_set_registry(pRegistry);
+ 195   1        result = CU_run_all_tests();
+ 196   1        if (NULL != pRegistry)
+ 197   1          CU_set_registry(pOldRegistry);
+ 198   1        return result;
+ 199   1      }
+ 200          
+ 201          /*------------------------------------------------------------------------*/
+ 202          /** Runs a specified suite within the basic interface.
+ 203           *  @param pSuite The suite to be run (non-NULL).
+ 204           *  @return An error code indicating the error status
+ 205           *          during the test run.
+ 206           */
+ 207          static CU_ErrorCode basic_run_suite(CU_pSuite pSuite)
+ 208          {
+ 209   1        f_pRunningSuite = NULL;
+ 210   1        return CU_run_suite(pSuite);
+ 211   1      }
+ 212          
+ 213          /*------------------------------------------------------------------------*/
+ 214          /** Runs a single test for the specified suite within
+ 215           *  the console interface.
+ 216           *  @param pSuite The suite containing the test to be run (non-NULL).
+ 217           *  @param pTest  The test to be run (non-NULL).
+ 218           *  @return An error code indicating the error status
+ 219           *          during the test run.
+ 220           */
+ 221          static CU_ErrorCode basic_run_single_test(CU_pSuite pSuite, CU_pTest pTest)
+ 222          {
+ 223   1        f_pRunningSuite = NULL;
+ 224   1        return CU_run_test(pSuite, pTest);
+ 225   1      }
+ 226          
+ 227          /*------------------------------------------------------------------------*/
+ 228          /** Handler function called at start of each test.
+ 229           *  @param pTest  The test being run.
+ 230           *  @param pSuite The suite containing the test.
+ 231           */
+ 232          static void basic_test_start_message_handler(const CU_pTest pTest, const CU_pSuite pSuite)
+ 233          {
+ 234   1        assert(NULL != pSuite);
+ 235   1        assert(NULL != pTest);
+C51 COMPILER V9.55   BASIC                                                                 08/05/2016 10:32:30 PAGE 5   
+
+ 236   1      
+ 237   1        if (CU_BRM_VERBOSE == f_run_mode) {
+ 238   2          assert(NULL != pTest->pName);
+ 239   2          if ((NULL == f_pRunningSuite) || (f_pRunningSuite != pSuite)) {
+ 240   3            assert(NULL != pSuite->pName);
+ 241   3            fprintf(stdout, "\n%s: %s", _("Suite"), pSuite->pName);
+ 242   3            fprintf(stdout, "\n  %s: %s ...", _("Test"), pTest->pName);
+ 243   3            f_pRunningSuite = pSuite;
+ 244   3          }
+ 245   2          else {
+ 246   3            fprintf(stdout, "\n  %s: %s ...", _("Test"), pTest->pName);
+ 247   3          }
+ 248   2        }
+ 249   1      }
+ 250          
+ 251          /*------------------------------------------------------------------------*/
+ 252          /** Handler function called at completion of each test.
+ 253           *  @param pTest   The test being run.
+ 254           *  @param pSuite  The suite containing the test.
+ 255           *  @param pFailure Pointer to the 1st failure record for this test.
+ 256           */
+ 257          static void basic_test_complete_message_handler(const CU_pTest pTest,
+ 258                                                          const CU_pSuite pSuite,
+ 259                                                          const CU_pFailureRecord pFailureList)
+ 260          {
+ 261   1        CU_pFailureRecord pFailure = pFailureList;
+ 262   1        int i;
+ 263   1      
+ 264   1        assert(NULL != pSuite);
+ 265   1        assert(NULL != pTest);
+ 266   1      
+ 267   1        if (NULL == pFailure) {
+ 268   2          if (CU_BRM_VERBOSE == f_run_mode) {
+ 269   3            fprintf(stdout, _("passed"));
+ 270   3          }
+ 271   2        }
+ 272   1        else {
+ 273   2          switch (f_run_mode) {
+ 274   3            case CU_BRM_VERBOSE:
+ 275   3              fprintf(stdout, _("FAILED"));
+ 276   3              break;
+ 277   3            case CU_BRM_NORMAL:
+ 278   3              assert(NULL != pSuite->pName);
+ 279   3              assert(NULL != pTest->pName);
+ 280   3              fprintf(stdout, _("\nSuite %s, Test %s had failures:"), pSuite->pName, pTest->pName);
+ 281   3              break;
+ 282   3            default:  /* gcc wants all enums covered.  ok. */
+ 283   3              break;
+ 284   3          }
+ 285   2          if (CU_BRM_SILENT != f_run_mode) {
+ 286   3            for (i = 1 ; (NULL != pFailure) ; pFailure = pFailure->pNext, i++) {
+ 287   4              fprintf(stdout, "\n    %d. %s:%u  - %s", i,
+ 288   4                  (NULL != pFailure->strFileName) ? pFailure->strFileName : "",
+ 289   4                  pFailure->uiLineNumber,
+ 290   4                  (NULL != pFailure->strCondition) ? pFailure->strCondition : "");
+ 291   4            }
+ 292   3          }
+ 293   2        }
+ 294   1      }
+ 295          
+ 296          /*------------------------------------------------------------------------*/
+ 297          /** Handler function called at completion of all tests in a suite.
+C51 COMPILER V9.55   BASIC                                                                 08/05/2016 10:32:30 PAGE 6   
+
+ 298           *  @param pFailure Pointer to the test failure record list.
+ 299           */
+ 300          static void basic_all_tests_complete_message_handler(const CU_pFailureRecord pFailure)
+ 301          {
+ 302   1        CU_UNREFERENCED_PARAMETER(pFailure); /* not used in basic interface */
+*** WARNING C275 IN LINE 302 OF ..\..\CUnit-2.1-3\CUnit\Sources\Basic\Basic.c: expression with possibly no effect
+ 303   1        printf("\n\n");
+ 304   1        CU_print_run_results(stdout);
+ 305   1        printf("\n");
+ 306   1      }
+ 307          
+ 308          /*------------------------------------------------------------------------*/
+ 309          /** Handler function called when suite initialization fails.
+ 310           *  @param pSuite The suite for which initialization failed.
+ 311           */
+ 312          static void basic_suite_init_failure_message_handler(const CU_pSuite pSuite)
+ 313          {
+ 314   1        assert(NULL != pSuite);
+ 315   1        assert(NULL != pSuite->pName);
+ 316   1      
+ 317   1        if (CU_BRM_SILENT != f_run_mode)
+ 318   1          fprintf(stdout, _("\nWARNING - Suite initialization failed for '%s'."), pSuite->pName);
+ 319   1      }
+ 320          
+ 321          /*------------------------------------------------------------------------*/
+ 322          /** Handler function called when suite cleanup fails.
+ 323           *  @param pSuite The suite for which cleanup failed.
+ 324           */
+ 325          static void basic_suite_cleanup_failure_message_handler(const CU_pSuite pSuite)
+ 326          {
+ 327   1        assert(NULL != pSuite);
+ 328   1        assert(NULL != pSuite->pName);
+ 329   1      
+ 330   1        if (CU_BRM_SILENT != f_run_mode)
+ 331   1          fprintf(stdout, _("\nWARNING - Suite cleanup failed for '%s'."), pSuite->pName);
+ 332   1      }
+ 333          
+ 334          /** @} */
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2266    ----
+   CONSTANT SIZE    =    644    ----
+   XDATA SIZE       =      4      60
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  3 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,491 @@
+C51 COMPILER V9.55   EXAMPLETESTS                                                          08/05/2016 10:32:31 PAGE 1   
+
+
+C51 COMPILER V9.55, COMPILATION OF MODULE EXAMPLETESTS
+OBJECT MODULE PLACED IN .\Objects\ExampleTests.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE ..\..\CUnit-2.1-3\Examples\ExampleTests.c LARGE OPTIMIZE(8,SPEED) BROWSE
+                    - INCDIR(..\..\CUnit-2.1-3\CUnit\Headers;..\..\CUnit-2.1-3\Examples;..\..\src\inc) DEFINE(stdout=0,stderr=0,FILE=char,fpr
+                    -intf=printf,setvbuf,_IONBF=0,exit,EXIT_FAILURE=0,snprintf=sprintf) DEBUG OBJECTEXTEND PRINT(.\Listings\ExampleTests.lst)
+                    - OBJECT(.\Objects\ExampleTests.obj)
+
+line level    source
+
+   1          /*
+   2           *  CUnit - A Unit testing framework library for C.
+   3           *  Copyright (C) 2001        Anil Kumar
+   4           *  Copyright (C) 2004, 2005  Anil Kumar, Jerry St.Clair
+   5           *
+   6           *  This library is free software; you can redistribute it and/or
+   7           *  modify it under the terms of the GNU Library General Public
+   8           *  License as published by the Free Software Foundation; either
+   9           *  version 2 of the License, or (at your option) any later version.
+  10           *
+  11           *  This library is distributed in the hope that it will be useful,
+  12           *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  13           *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  14           *  Library General Public License for more details.
+  15           *
+  16           *  You should have received a copy of the GNU Library General Public
+  17           *  License along with this library; if not, write to the Free Software
+  18           *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+  19           */
+  20          
+  21          #include <stdio.h>
+  22          #include <stdlib.h>
+  23          #include <string.h>
+  24          #include <assert.h>
+  25          
+  26          #include "CUnit.h"
+  27          #include "ExampleTests.h"
+  28          
+  29          /* WARNING - MAINTENANCE NIGHTMARE AHEAD
+  30           *
+  31           * If you change any of the tests & suites below, you also need
+  32           * to keep track of changes in the result statistics and reflect
+  33           * any changes in the result report counts in print_example_results().
+  34           *
+  35           * Yes, this could have been designed better using a more
+  36           * automated mechanism.  No, it was not done that way.
+  37           */
+  38          
+  39          /* Suite initialization/cleanup functions */
+  40          static int suite_success_init(void) { return 0; }
+  41          static int suite_success_clean(void) { return 0; }
+  42          
+  43          static int suite_failure_init(void) { return 1;}
+  44          static int suite_failure_clean(void) { return 1; }
+  45          
+  46          static void testSuccess1(void) { CU_ASSERT(1); }
+  47          static void testSuccess2(void) { CU_ASSERT(2); }
+  48          static void testSuccess3(void) { CU_ASSERT(3); }
+  49          
+  50          static void testSuiteFailure1(void) { CU_ASSERT(0); }
+  51          static void testSuiteFailure2(void) { CU_ASSERT(2); }
+  52          
+C51 COMPILER V9.55   EXAMPLETESTS                                                          08/05/2016 10:32:31 PAGE 2   
+
+  53          static void testFailure1(void) { CU_ASSERT(0); }
+  54          static void testFailure2(void) { CU_ASSERT(0); }
+  55          static void testFailure3(void) { CU_ASSERT(0); }
+  56          
+  57          /* Test functions for CUnit assertions */
+  58          static void testSimpleAssert(void)
+  59          {
+  60   1        CU_ASSERT(1);
+  61   1        CU_ASSERT(!0);
+  62   1        CU_TEST(1);
+  63   1      
+  64   1        CU_ASSERT(0);
+  65   1        CU_ASSERT(!1);
+  66   1        CU_TEST(0);
+  67   1      }
+  68          
+  69          static void testFail(void)
+  70          {
+  71   1        CU_FAIL("This is a failure.");
+  72   1        CU_FAIL("This is another failure.");
+  73   1      }
+  74          
+  75          static void testAssertTrue(void)
+  76          {
+  77   1        CU_ASSERT_TRUE(CU_TRUE);
+  78   1        CU_ASSERT_TRUE(!CU_FALSE);
+  79   1      
+  80   1        CU_ASSERT_TRUE(!CU_TRUE);
+  81   1        CU_ASSERT_TRUE(CU_FALSE);
+  82   1      }
+  83          
+  84          static void testAssertFalse(void)
+  85          {
+  86   1        CU_ASSERT_FALSE(CU_FALSE);
+  87   1        CU_ASSERT_FALSE(!CU_TRUE);
+  88   1      
+  89   1        CU_ASSERT_FALSE(!CU_FALSE);
+  90   1        CU_ASSERT_FALSE(CU_TRUE);
+  91   1      }
+  92          
+  93          static void testAssertEqual(void)
+  94          {
+  95   1        CU_ASSERT_EQUAL(10, 10);
+  96   1        CU_ASSERT_EQUAL(0, 0);
+  97   1        CU_ASSERT_EQUAL(0, -0);
+  98   1        CU_ASSERT_EQUAL(-12, -12);
+  99   1      
+ 100   1        CU_ASSERT_EQUAL(10, 11);
+ 101   1        CU_ASSERT_EQUAL(0, 1);
+ 102   1        CU_ASSERT_EQUAL(0, -1);
+ 103   1        CU_ASSERT_EQUAL(-12, 12);
+ 104   1      }
+ 105          
+ 106          static void testAssertNotEqual(void)
+ 107          {
+ 108   1        CU_ASSERT_NOT_EQUAL(10, 11);
+ 109   1        CU_ASSERT_NOT_EQUAL(0, -1);
+ 110   1        CU_ASSERT_NOT_EQUAL(-12, -11);
+ 111   1      
+ 112   1        CU_ASSERT_NOT_EQUAL(10, 10);
+ 113   1        CU_ASSERT_NOT_EQUAL(0, -0);
+ 114   1        CU_ASSERT_NOT_EQUAL(0, 0);
+C51 COMPILER V9.55   EXAMPLETESTS                                                          08/05/2016 10:32:31 PAGE 3   
+
+ 115   1        CU_ASSERT_NOT_EQUAL(-12, -12);
+ 116   1      }
+ 117          
+ 118          static void testAssertPtrEqual(void)
+ 119          {
+ 120   1        CU_ASSERT_PTR_EQUAL((void*)0x100, (void*)0x100);
+ 121   1      
+ 122   1        CU_ASSERT_PTR_EQUAL((void*)0x100, (void*)0x101);
+ 123   1      }
+ 124          
+ 125          static void testAssertPtrNotEqual(void)
+ 126          {
+ 127   1        CU_ASSERT_PTR_NOT_EQUAL((void*)0x100, (void*)0x101);
+ 128   1      
+ 129   1        CU_ASSERT_PTR_NOT_EQUAL((void*)0x100, (void*)0x100);
+ 130   1      }
+ 131          
+ 132          static void testAssertPtrNull(void)
+ 133          {
+ 134   1        CU_ASSERT_PTR_NULL((void*)(NULL));
+ 135   1        CU_ASSERT_PTR_NULL((void*)(0x0));
+ 136   1      
+ 137   1        CU_ASSERT_PTR_NULL((void*)0x23);
+ 138   1      }
+ 139          
+ 140          static void testAssertPtrNotNull(void)
+ 141          {
+ 142   1        CU_ASSERT_PTR_NOT_NULL((void*)0x100);
+ 143   1      
+ 144   1        CU_ASSERT_PTR_NOT_NULL(NULL);
+ 145   1        CU_ASSERT_PTR_NOT_NULL((void*)0x0);
+ 146   1      }
+ 147          
+ 148          static void testAssertStringEqual(void)
+ 149          {
+ 150   1        char str1[] = "test";
+ 151   1        char str2[] = "test";
+ 152   1        char str3[] = "suite";
+ 153   1      
+ 154   1        CU_ASSERT_STRING_EQUAL(str1, str2);
+ 155   1      
+ 156   1        CU_ASSERT_STRING_EQUAL(str1, str3);
+ 157   1        CU_ASSERT_STRING_EQUAL(str3, str2);
+ 158   1      }
+ 159          
+ 160          static void testAssertStringNotEqual(void)
+ 161          {
+ 162   1        char str1[] = "test";
+ 163   1        char str2[] = "test";
+ 164   1        char str3[] = "suite";
+ 165   1      
+ 166   1        CU_ASSERT_STRING_NOT_EQUAL(str1, str3);
+ 167   1        CU_ASSERT_STRING_NOT_EQUAL(str3, str2);
+ 168   1      
+ 169   1        CU_ASSERT_STRING_NOT_EQUAL(str1, str2);
+ 170   1      }
+ 171          
+ 172          static void testAssertNStringEqual(void)
+ 173          {
+ 174   1        char str1[] = "test";
+ 175   1        char str2[] = "testgfsg";
+ 176   1        char str3[] = "tesgfsg";
+C51 COMPILER V9.55   EXAMPLETESTS                                                          08/05/2016 10:32:31 PAGE 4   
+
+ 177   1      
+ 178   1        CU_ASSERT_NSTRING_EQUAL(str1, str2, strlen(str1));
+ 179   1        CU_ASSERT_NSTRING_EQUAL(str1, str1, strlen(str1));
+ 180   1        CU_ASSERT_NSTRING_EQUAL(str1, str1, strlen(str1) + 1);
+ 181   1      
+ 182   1        CU_ASSERT_NSTRING_EQUAL(str2, str3, 4);
+ 183   1        CU_ASSERT_NSTRING_EQUAL(str1, str3, strlen(str1));
+ 184   1      }
+ 185          
+ 186          static void testAssertNStringNotEqual(void)
+ 187          {
+ 188   1        char str1[] = "test";
+ 189   1        char str2[] = "tevt";
+ 190   1        char str3[] = "testgfsg";
+ 191   1      
+ 192   1        CU_ASSERT_NSTRING_NOT_EQUAL(str1, str2, 3);
+ 193   1        CU_ASSERT_NSTRING_NOT_EQUAL(str1, str3, strlen(str1) + 1);
+ 194   1      
+ 195   1        CU_ASSERT_NSTRING_NOT_EQUAL(str1, str2, 2);
+ 196   1        CU_ASSERT_NSTRING_NOT_EQUAL(str2, str3, 2);
+ 197   1      }
+ 198          
+ 199          static void testAssertDoubleEqual(void)
+ 200          {
+ 201   1        CU_ASSERT_DOUBLE_EQUAL(10, 10.0001, 0.0001);
+ 202   1        CU_ASSERT_DOUBLE_EQUAL(10, 10.0001, -0.0001);
+ 203   1        CU_ASSERT_DOUBLE_EQUAL(-10, -10.0001, 0.0001);
+ 204   1        CU_ASSERT_DOUBLE_EQUAL(-10, -10.0001, -0.0001);
+ 205   1      
+ 206   1        CU_ASSERT_DOUBLE_EQUAL(10, 10.0001, 0.00001);
+ 207   1        CU_ASSERT_DOUBLE_EQUAL(10, 10.0001, -0.00001);
+ 208   1        CU_ASSERT_DOUBLE_EQUAL(-10, -10.0001, 0.00001);
+ 209   1        CU_ASSERT_DOUBLE_EQUAL(-10, -10.0001, -0.00001);
+ 210   1      }
+ 211          
+ 212          static void testAssertDoubleNotEqual(void)
+ 213          {
+ 214   1        CU_ASSERT_DOUBLE_NOT_EQUAL(10, 10.001, 0.0001);
+ 215   1        CU_ASSERT_DOUBLE_NOT_EQUAL(10, 10.001, -0.0001);
+ 216   1        CU_ASSERT_DOUBLE_NOT_EQUAL(-10, -10.001, 0.0001);
+ 217   1        CU_ASSERT_DOUBLE_NOT_EQUAL(-10, -10.001, -0.0001);
+ 218   1      
+ 219   1        CU_ASSERT_DOUBLE_NOT_EQUAL(10, 10.001, 0.01);
+ 220   1        CU_ASSERT_DOUBLE_NOT_EQUAL(10, 10.001, -0.01);
+ 221   1        CU_ASSERT_DOUBLE_NOT_EQUAL(-10, -10.001, 0.01);
+ 222   1        CU_ASSERT_DOUBLE_NOT_EQUAL(-10, -10.001, -0.01);
+ 223   1      }
+ 224          
+ 225          static void testAbort(void)
+ 226          {
+ 227   1        CU_TEST_FATAL(CU_TRUE);
+ 228   1        CU_TEST_FATAL(CU_FALSE);
+ 229   1        fprintf(stderr, "\nFatal assertion failed to abort test in testAbortIndirect1\n");
+ 230   1        exit(1);
+*** WARNING C275 IN LINE 230 OF ..\..\CUnit-2.1-3\Examples\ExampleTests.c: expression with possibly no effect
+ 231   1      }
+ 232          
+ 233          static void testAbortIndirect(void)
+ 234          {
+ 235   1        testAbort();
+ 236   1        fprintf(stderr, "\nFatal assertion failed to abort test in testAbortIndirect2\n");
+ 237   1        exit(1);
+C51 COMPILER V9.55   EXAMPLETESTS                                                          08/05/2016 10:32:31 PAGE 5   
+
+*** WARNING C275 IN LINE 237 OF ..\..\CUnit-2.1-3\Examples\ExampleTests.c: expression with possibly no effect
+ 238   1      }
+ 239          
+ 240          static void testFatal(void)
+ 241          {
+ 242   1        CU_TEST_FATAL(CU_TRUE);
+ 243   1        testAbortIndirect();
+ 244   1        fprintf(stderr, "\nFatal assertion failed to abort test in testFatal\n");
+ 245   1        exit(1);
+*** WARNING C275 IN LINE 245 OF ..\..\CUnit-2.1-3\Examples\ExampleTests.c: expression with possibly no effect
+ 246   1      }
+ 247          
+ 248          static CU_TestInfo tests_success[] = {
+ 249            { "testSuccess1", testSuccess1 },
+ 250            { "testSuccess2", testSuccess2 },
+ 251            { "testSuccess3", testSuccess3 },
+ 252                  CU_TEST_INFO_NULL,
+ 253          };
+ 254          
+ 255          static CU_TestInfo tests_failure[] = {
+ 256            { "testFailure1", testFailure1 },
+ 257            { "testFailure2", testFailure2 },
+ 258            { "testFailure3", testFailure3 },
+ 259                  CU_TEST_INFO_NULL,
+ 260          };
+ 261          
+ 262          static CU_TestInfo tests_suitefailure[] = {
+ 263            { "testSuiteFailure1", testSuiteFailure1 },
+ 264            { "testSuiteFailure2", testSuiteFailure2 },
+ 265                  CU_TEST_INFO_NULL,
+ 266          };
+ 267          
+ 268          static CU_TestInfo tests_simple[] = {
+ 269            { "testSimpleAssert", testSimpleAssert },
+ 270            { "testFail", testFail },
+ 271                  CU_TEST_INFO_NULL,
+ 272          };
+ 273          
+ 274          static CU_TestInfo tests_bool[] = {
+ 275            { "testAssertTrue", testAssertTrue },
+ 276            { "testAssertFalse", testAssertFalse },
+ 277                  CU_TEST_INFO_NULL,
+ 278          };
+ 279          
+ 280          static CU_TestInfo tests_equal[] = {
+ 281            { "testAssertEqual", testAssertEqual },
+ 282            { "testAssertNotEqual", testAssertNotEqual },
+ 283                  CU_TEST_INFO_NULL,
+ 284          };
+ 285          
+ 286          static CU_TestInfo tests_ptr[] = {
+ 287            { "testAssertPtrEqual", testAssertPtrEqual },
+ 288            { "testAssertPtrNotEqual", testAssertPtrNotEqual },
+ 289                  CU_TEST_INFO_NULL,
+ 290          };
+ 291          
+ 292          static CU_TestInfo tests_null[] = {
+ 293            { "testAssertPtrNull", testAssertPtrNull },
+ 294            { "testAssertPtrNotNull", testAssertPtrNotNull },
+ 295                  CU_TEST_INFO_NULL,
+ 296          };
+ 297          
+C51 COMPILER V9.55   EXAMPLETESTS                                                          08/05/2016 10:32:31 PAGE 6   
+
+ 298          static CU_TestInfo tests_string[] = {
+ 299            { "testAssertStringEqual", testAssertStringEqual },
+ 300            { "testAssertStringNotEqual", testAssertStringNotEqual },
+ 301                  CU_TEST_INFO_NULL,
+ 302          };
+ 303          
+ 304          static CU_TestInfo tests_nstring[] = {
+ 305            { "testAssertNStringEqual", testAssertNStringEqual },
+ 306            { "testAssertNStringNotEqual", testAssertNStringNotEqual },
+ 307                  CU_TEST_INFO_NULL,
+ 308          };
+ 309          
+ 310          static CU_TestInfo tests_double[] = {
+ 311            { "testAssertDoubleEqual", testAssertDoubleEqual },
+ 312            { "testAssertDoubleNotEqual", testAssertDoubleNotEqual },
+ 313                  CU_TEST_INFO_NULL,
+ 314          };
+ 315          
+ 316          static CU_TestInfo tests_fatal[] = {
+ 317            { "testFatal", testFatal },
+ 318                  CU_TEST_INFO_NULL,
+ 319          };
+ 320          
+ 321          static CU_SuiteInfo suites[] = {
+ 322            { "suite_success_both",  suite_success_init, suite_success_clean, NULL, NULL, tests_success},
+ 323            { "suite_success_init",  suite_success_init, NULL,                NULL, NULL, tests_success},
+ 324            { "suite_success_clean", NULL,               suite_success_clean, NULL, NULL, tests_success},
+ 325            { "test_failure",        NULL,               NULL,                NULL, NULL, tests_failure},
+ 326            { "suite_failure_both",  suite_failure_init, suite_failure_clean, NULL, NULL, tests_suitefailure}, /* te
+             -sts should not run */
+ 327            { "suite_failure_init",  suite_failure_init, NULL,                NULL, NULL, tests_suitefailure}, /* te
+             -sts should not run */
+ 328            { "suite_success_but_failure_clean", NULL,   suite_failure_clean, NULL, NULL, tests_suitefailure}, /* te
+             -sts will run, suite counted as running, but suite tagged as a failure */
+ 329            { "TestSimpleAssert",    NULL,               NULL,                NULL, NULL, tests_simple},
+ 330            { "TestBooleanAssert",   NULL,               NULL,                NULL, NULL, tests_bool},
+ 331            { "TestEqualityAssert",  NULL,               NULL,                NULL, NULL, tests_equal},
+ 332            { "TestPointerAssert",   NULL,               NULL,                NULL, NULL, tests_ptr},
+ 333            { "TestNullnessAssert",  NULL,               NULL,                NULL, NULL, tests_null},
+ 334            { "TestStringAssert",    NULL,               NULL,                NULL, NULL, tests_string},
+ 335            { "TestNStringAssert",   NULL,               NULL,                NULL, NULL, tests_nstring},
+ 336            { "TestDoubleAssert",    NULL,               NULL,                NULL, NULL, tests_double},
+ 337            { "TestFatal",           NULL,               NULL,                NULL, NULL, tests_fatal},
+ 338                  CU_SUITE_INFO_NULL,
+ 339          };
+ 340          
+ 341          void AddTests(void)
+ 342          {
+ 343   1        assert(NULL != CU_get_registry());
+ 344   1        assert(!CU_is_test_running());
+ 345   1      
+ 346   1              /* Register suites. */
+ 347   1              if (CU_register_suites(suites) != CUE_SUCCESS) {
+ 348   2                      fprintf(stderr, "suite registration failed - %s\n",
+ 349   2                              CU_get_error_msg());
+ 350   2                      exit(EXIT_FAILURE);
+*** WARNING C275 IN LINE 350 OF ..\..\CUnit-2.1-3\Examples\ExampleTests.c: expression with possibly no effect
+ 351   2              }
+ 352   1      
+ 353   1      /* implementation without shortcut registration
+ 354   1        CU_pSuite pSuite;
+ 355   1      
+C51 COMPILER V9.55   EXAMPLETESTS                                                          08/05/2016 10:32:31 PAGE 7   
+
+ 356   1        pSuite = CU_add_suite("suite_success_both", suite_success_init, suite_success_clean);
+ 357   1        CU_add_test(pSuite, "testSuccess1", testSuccess1);
+ 358   1        CU_add_test(pSuite, "testSuccess2", testSuccess2);
+ 359   1        CU_add_test(pSuite, "testSuccess3", testSuccess3);
+ 360   1      
+ 361   1        pSuite = CU_add_suite("suite_success_init", suite_success_init, NULL);
+ 362   1        CU_add_test(pSuite, "testSuccess1", testSuccess1);
+ 363   1        CU_add_test(pSuite, "testSuccess2", testSuccess2);
+ 364   1        CU_add_test(pSuite, "testSuccess3", testSuccess3);
+ 365   1      
+ 366   1        pSuite = CU_add_suite("suite_success_clean", NULL, suite_success_clean);
+ 367   1        CU_add_test(pSuite, "testSuccess1", testSuccess1);
+ 368   1        CU_add_test(pSuite, "testSuccess2", testSuccess2);
+ 369   1        CU_add_test(pSuite, "testSuccess3", testSuccess3);
+ 370   1      
+ 371   1        pSuite = CU_add_suite("test_failure", NULL, NULL);
+ 372   1        CU_add_test(pSuite, "testFailure1", testFailure1);
+ 373   1        CU_add_test(pSuite, "testFailure2", testFailure2);
+ 374   1        CU_add_test(pSuite, "testFailure3", testFailure3);
+ 375   1      
+ 376   1        / * tests should not run * /
+ 377   1        pSuite = CU_add_suite("suite_failure_both", suite_failure_init, suite_failure_clean);
+ 378   1        CU_add_test(pSuite, "testSuiteFailure1", testSuiteFailure1);
+ 379   1        CU_add_test(pSuite, "testSuiteFailure2", testSuiteFailure2);
+ 380   1      
+ 381   1        / * tests should not run * /
+ 382   1        pSuite = CU_add_suite("suite_failure_init", suite_failure_init, NULL);
+ 383   1        CU_add_test(pSuite, "testSuiteFailure1", testSuiteFailure1);
+ 384   1        CU_add_test(pSuite, "testSuiteFailure2", testSuiteFailure2);
+ 385   1      
+ 386   1        / * tests will run, suite counted as running, but suite tagged as a failure * /
+ 387   1        pSuite = CU_add_suite("suite_success_but_failure_clean", NULL, suite_failure_clean);
+ 388   1        CU_add_test(pSuite, "testSuiteFailure1", testSuiteFailure1);
+ 389   1        CU_add_test(pSuite, "testSuiteFailure2", testSuiteFailure2);
+ 390   1      
+ 391   1        pSuite = CU_add_suite("TestSimpleAssert", NULL, NULL);
+ 392   1        CU_add_test(pSuite, "testSimpleAssert", testSimpleAssert);
+ 393   1        CU_add_test(pSuite, "testFail", testFail);
+ 394   1      
+ 395   1        pSuite = CU_add_suite("TestBooleanAssert", NULL, NULL);
+ 396   1        CU_add_test(pSuite, "testAssertTrue", testAssertTrue);
+ 397   1        CU_add_test(pSuite, "testAssertFalse", testAssertFalse);
+ 398   1      
+ 399   1        pSuite = CU_add_suite("TestEqualityAssert", NULL, NULL);
+ 400   1        CU_add_test(pSuite, "testAssertEqual", testAssertEqual);
+ 401   1        CU_add_test(pSuite, "testAssertNotEqual", testAssertNotEqual);
+ 402   1      
+ 403   1        pSuite = CU_add_suite("TestPointerAssert", NULL, NULL);
+ 404   1        CU_add_test(pSuite, "testAssertPtrEqual", testAssertPtrEqual);
+ 405   1        CU_add_test(pSuite, "testAssertPtrNotEqual", testAssertPtrNotEqual);
+ 406   1      
+ 407   1        pSuite = CU_add_suite("TestNullnessAssert", NULL, NULL);
+ 408   1        CU_add_test(pSuite, "testAssertPtrNull", testAssertPtrNull);
+ 409   1        CU_add_test(pSuite, "testAssertPtrNotNull", testAssertPtrNotNull);
+ 410   1      
+ 411   1        pSuite = CU_add_suite("TestStringAssert", NULL, NULL);
+ 412   1        CU_add_test(pSuite, "testAssertStringEqual", testAssertStringEqual);
+ 413   1        CU_add_test(pSuite, "testAssertStringNotEqual", testAssertStringNotEqual);
+ 414   1      
+ 415   1        pSuite = CU_add_suite("TestNStringAssert", NULL, NULL);
+ 416   1        CU_add_test(pSuite, "testAssertNStringEqual", testAssertNStringEqual);
+ 417   1        CU_add_test(pSuite, "testAssertNStringNotEqual", testAssertNStringNotEqual);
+C51 COMPILER V9.55   EXAMPLETESTS                                                          08/05/2016 10:32:31 PAGE 8   
+
+ 418   1      
+ 419   1        pSuite = CU_add_suite("TestDoubleAssert", NULL, NULL);
+ 420   1        CU_add_test(pSuite, "testAssertDoubleEqual", testAssertDoubleEqual);
+ 421   1        CU_add_test(pSuite, "testAssertDoubleNotEqual", testAssertDoubleNotEqual);
+ 422   1      
+ 423   1        pSuite = CU_add_suite("TestFatal", NULL, NULL);
+ 424   1        CU_add_test(pSuite, "testFatal", testFatal);
+ 425   1      */
+ 426   1      }
+ 427          
+ 428          void print_example_results(void)
+ 429          {
+ 430   1        fprintf(stdout, "\n\nExpected Test Results:"
+ 431   1                        "\n\n  Error Handling  Type      # Run   # Pass   # Fail"
+ 432   1                        "\n\n  ignore errors   suites%9u%9u%9u"
+ 433   1                          "\n                  tests %9u%9u%9u"
+ 434   1                          "\n                  asserts%8u%9u%9u"
+ 435   1                        "\n\n  stop on error   suites%9u%9u%9u"
+ 436   1                          "\n                  tests %9u%9u%9u"
+ 437   1                          "\n                  asserts%8u%9u%9u\n\n",
+ 438   1                        14, 14, 3,
+ 439   1                        31, 10, 21,
+ 440   1                        89, 47, 42,
+ 441   1                        4, 4, 1,
+ 442   1                        12, 9, 3,
+ 443   1                        12, 9, 3);
+ 444   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   5765    ----
+   CONSTANT SIZE    =   3870    ----
+   XDATA SIZE       =    528      73
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  4 WARNING(S),  0 ERROR(S)

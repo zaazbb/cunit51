@@ -1,0 +1,275 @@
+C51 COMPILER V9.55   BASICTEST                                                             08/05/2016 10:32:31 PAGE 1   
+
+
+C51 COMPILER V9.55, COMPILATION OF MODULE BASICTEST
+OBJECT MODULE PLACED IN .\Objects\BasicTest.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE ..\..\CUnit-2.1-3\Examples\BasicTest\BasicTest.c LARGE OPTIMIZE(8,SPEED)
+                    - BROWSE INCDIR(..\..\CUnit-2.1-3\CUnit\Headers;..\..\CUnit-2.1-3\Examples;..\..\src\inc) DEFINE(stdout=0,stderr=0,FILE=c
+                    -har,fprintf=printf,setvbuf,_IONBF=0,exit,EXIT_FAILURE=0,snprintf=sprintf) DEBUG OBJECTEXTEND PRINT(.\Listings\BasicTest.
+                    -lst) OBJECT(.\Objects\BasicTest.obj)
+
+line level    source
+
+   1          /*
+   2           *  CUnit - A Unit testing framework library for C.
+   3           *  Copyright (C) 2004  Anil Kumar, Jerry St.Clair
+   4           *
+   5           *  This library is free software; you can redistribute it and/or
+   6           *  modify it under the terms of the GNU Library General Public
+   7           *  License as published by the Free Software Foundation; either
+   8           *  version 2 of the License, or (at your option) any later version.
+   9           *
+  10           *  This library is distributed in the hope that it will be useful,
+  11           *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  12           *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  13           *  Library General Public License for more details.
+  14           *
+  15           *  You should have received a copy of the GNU Library General Public
+  16           *  License along with this library; if not, write to the Free Software
+  17           *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+  18           */
+  19          
+  20          #include <stdio.h>
+  21          #include <stdlib.h>
+  22          #include <string.h>
+  23          
+  24          #include "Basic.h"
+  25          #include "ExampleTests.h"
+  26          
+  27          /*
+  28          int main(int argc, char* argv[])
+  29          {
+  30            CU_BasicRunMode mode = CU_BRM_VERBOSE;
+  31            CU_ErrorAction error_action = CUEA_IGNORE;
+  32            int i;
+  33          
+  34            setvbuf(stdout, NULL, _IONBF, 0);
+  35          
+  36            for (i=1 ; i<argc ; i++) {
+  37              if (!strcmp("-i", argv[i])) {
+  38                error_action = CUEA_IGNORE;
+  39              }
+  40              else if (!strcmp("-f", argv[i])) {
+  41                error_action = CUEA_FAIL;
+  42              }
+  43              else if (!strcmp("-A", argv[i])) {
+  44                error_action = CUEA_ABORT;
+  45              }
+  46              else if (!strcmp("-s", argv[i])) {
+  47                mode = CU_BRM_SILENT;
+  48              }
+  49              else if (!strcmp("-n", argv[i])) {
+  50                mode = CU_BRM_NORMAL;
+  51              }
+  52              else if (!strcmp("-v", argv[i])) {
+C51 COMPILER V9.55   BASICTEST                                                             08/05/2016 10:32:31 PAGE 2   
+
+  53                mode = CU_BRM_VERBOSE;
+  54              }
+  55              else if (!strcmp("-e", argv[i])) {
+  56                print_example_results();
+  57                return 0;
+  58              }
+  59              else {
+  60                printf("\nUsage:  BasicTest [options]\n\n"
+  61                         "Options:   -i   ignore framework errors [default].\n"
+  62                         "           -f   fail on framework error.\n"
+  63                         "           -A   abort on framework error.\n\n"
+  64                         "           -s   silent mode - no output to screen.\n"
+  65                         "           -n   normal mode - standard output to screen.\n"
+  66                         "           -v   verbose mode - max output to screen [default].\n\n"
+  67                         "           -e   print expected test results and exit.\n"
+  68                         "           -h   print this message and exit.\n\n");
+  69                return 0;
+  70              }
+  71            }
+  72          
+  73            if (CU_initialize_registry()) {
+  74              printf("\nInitialization of Test Registry failed.");
+  75            }
+  76            else {
+  77              AddTests();
+  78              CU_basic_set_mode(mode);
+  79              CU_set_error_action(error_action);
+  80              printf("\nTests completed with return value %d.\n", CU_basic_run_tests());
+  81              CU_cleanup_registry();
+  82            }
+  83          
+  84            return 0;
+  85          }
+  86          */
+  87          
+  88          #include <reg51.h>
+  89          #include <stdio.h>
+  90          
+  91          #define    XTAL 11059200                        // CPU Oscillator Frequency
+  92          #define    baudrate 9600                        // 9600 bps communication baudrate
+  93          
+  94          #define    OLEN  8                              // size of serial transmission buffer
+  95          unsigned   char  ostart;                        // transmission buffer start index
+  96          unsigned   char  oend;                          // transmission buffer end index
+  97          char idata outbuf[OLEN];                        // storage for transmission buffer
+  98          
+  99          #define    ILEN  8                              // size of serial receiving buffer
+ 100          unsigned   char  istart;                        // receiving buffer start index
+ 101          unsigned   char  iend;                          // receiving buffer end index
+ 102          char idata inbuf[ILEN];                         // storage for receiving buffer
+ 103          
+ 104          bit sendfull;                                   // flag: marks transmit buffer full
+ 105          bit sendactive;                                 // flag: marks transmitter active
+ 106          
+ 107          
+ 108          /*--------------------------------------------------------------------------------
+ 109           * Serial Interrupt Service Routine
+ 110           *------------------------------------------------------------------------------*/
+ 111          static void com_isr (void) interrupt 4 using 1 {
+ 112   1      char c;
+ 113   1      
+ 114   1        //----- Received data interrupt. -----
+C51 COMPILER V9.55   BASICTEST                                                             08/05/2016 10:32:31 PAGE 3   
+
+ 115   1        if (RI) {
+ 116   2          c = SBUF;                                   // read character
+ 117   2          RI = 0;                                     // clear interrupt request flag
+ 118   2          if (istart + ILEN != iend) {
+ 119   3            inbuf[iend++ & (ILEN-1)] = c;             // put character into buffer
+ 120   3          }
+ 121   2        }
+ 122   1      
+ 123   1        //----- Transmitted data interrupt. -----
+ 124   1        if (TI != 0) {
+ 125   2          TI = 0;                                     // clear interrupt request flag
+ 126   2          if (ostart != oend) {                       // if characters in buffer and
+ 127   3            SBUF = outbuf[ostart++ & (OLEN-1)];       // transmit character
+ 128   3            sendfull = 0;                             // clear 'sendfull' flag
+ 129   3          }
+ 130   2          else {                                      // if all characters transmitted
+ 131   3            sendactive = 0;                           // clear 'sendactive'
+ 132   3          }
+ 133   2        }
+ 134   1      }
+ 135          
+ 136          
+ 137          /*--------------------------------------------------------------------------------
+ 138           * Function to initialize the serial port and the UART baudrate.
+ 139           *------------------------------------------------------------------------------*/
+ 140          void com_initialize (void) {
+ 141   1        istart = 0;                                  // empty transmit buffers
+ 142   1        iend = 0;
+ 143   1        ostart = 0;                                  // empty transmit buffers
+ 144   1        oend = 0;
+ 145   1        sendactive = 0;                              // transmitter is not active
+ 146   1        sendfull = 0;                                // clear 'sendfull' flag
+ 147   1      
+ 148   1                                                     // Configure timer 1 as a baud rate generator
+ 149   1        PCON |= 0x80;                                // 0x80=SMOD: set serial baudrate doubler
+ 150   1        TMOD |= 0x20;                                // put timer 1 into MODE 2
+ 151   1      
+ 152   1        TH1 = (unsigned char) (256 - (XTAL / (16L * 12L * baudrate)));
+ 153   1      
+ 154   1        TR1 = 1;                                     // start timer 1
+ 155   1      
+ 156   1        SCON = 0x50;                                 // serial port MODE 1, enable serial receiver
+ 157   1        ES = 1;                                      // enable serial interrupts
+ 158   1      }
+ 159          
+ 160          
+ 161          /*--------------------------------------------------------------------------------
+ 162           * putbuf: write a character to SBUF or transmission buffer
+ 163           *------------------------------------------------------------------------------*/
+ 164          void putbuf (char c) {
+ 165   1        if (!sendfull) {                             // transmit only if buffer not full
+ 166   2          if (!sendactive) {                         // if transmitter not active:
+ 167   3            sendactive = 1;                          // transfer first character direct
+ 168   3            SBUF = c;                                // to SBUF to start transmission
+ 169   3          }
+ 170   2          else {
+ 171   3            ES = 0;                                  // disable serial interrupts during buffer update
+ 172   3            outbuf[oend++ & (OLEN-1)] = c;           // put char to transmission buffer
+ 173   3            if (((oend ^ ostart) & (OLEN-1)) == 0) {
+ 174   4               sendfull = 1;
+ 175   4            }                                        // set flag if buffer is full
+ 176   3            ES = 1;                                  // enable serial interrupts again
+C51 COMPILER V9.55   BASICTEST                                                             08/05/2016 10:32:31 PAGE 4   
+
+ 177   3          }
+ 178   2        }
+ 179   1      }
+ 180          
+ 181          
+ 182          /*--------------------------------------------------------------------------------
+ 183           * Replacement routine for the standard library putchar routine.
+ 184           * The printf function uses putchar to output a character.
+ 185           *------------------------------------------------------------------------------*/
+ 186          char putchar (char c) {
+ 187   1        if (c == '\n') {                             // expand new line character:
+ 188   2          while (sendfull);                          // wait until there is space in buffer
+ 189   2          putbuf (0x0D);                             // send CR before LF for <new line>
+ 190   2        }
+ 191   1        while (sendfull);                            // wait until there is space in buffer
+ 192   1        putbuf (c);                                  // place character into buffer
+ 193   1        return (c);
+ 194   1      }
+ 195          
+ 196          
+ 197          /*--------------------------------------------------------------------------------
+ 198           * Replacement routine for the standard library _getkey routine.
+ 199           * The getchar and gets functions uses _getkey to read a character.
+ 200           *------------------------------------------------------------------------------*/
+ 201          char _getkey (void) {
+ 202   1        char c;
+ 203   1        while (iend == istart) {
+ 204   2           ;                                         // wait until there are characters
+ 205   2        }
+ 206   1        ES = 0;                                      // disable serial interrupts during buffer update
+ 207   1        c = inbuf[istart++ & (ILEN-1)];
+ 208   1        ES = 1;                                      // enable serial interrupts again
+ 209   1        return (c);
+ 210   1      }
+ 211          
+ 212          
+ 213          /*--------------------------------------------------------------------------------
+ 214           * Main C function that start the interrupt-driven serial I/O.
+ 215           *------------------------------------------------------------------------------*/
+ 216          void main (void) {
+ 217   1        CU_BasicRunMode mode = CU_BRM_VERBOSE;
+ 218   1        CU_ErrorAction error_action = CUEA_IGNORE;
+ 219   1              unsigned char xdata malloc_mempool [1024*10];
+ 220   1              init_mempool (&malloc_mempool, sizeof(malloc_mempool));
+ 221   1              
+ 222   1        EA = 1;                                      // enable global interrupts
+ 223   1        com_initialize ();                           // initialize interrupt driven serial I/O
+ 224   1                      
+ 225   1        if (CU_initialize_registry()) {
+ 226   2          printf("\nInitialization of Test Registry failed.");
+ 227   2        }
+ 228   1        else {
+ 229   2          AddTests();
+ 230   2          CU_basic_set_mode(mode);
+ 231   2          CU_set_error_action(error_action);
+ 232   2          printf("\nTests completed with return value %d.\n", CU_basic_run_tests());
+ 233   2          CU_cleanup_registry();
+ 234   2        }
+ 235   1              
+ 236   1        while (1) {
+ 237   2      //    char c;
+ 238   2      //    c = getchar ();
+C51 COMPILER V9.55   BASICTEST                                                             08/05/2016 10:32:31 PAGE 5   
+
+ 239   2      //    printf ("\nYou typed the character %c.\n", c);
+ 240   2        }
+ 241   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    319    ----
+   CONSTANT SIZE    =     81    ----
+   XDATA SIZE       =      4   10242
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     16    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

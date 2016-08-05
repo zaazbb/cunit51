@@ -1,0 +1,18 @@
+".\Objects\STARTUP.obj",
+".\Objects\Basic.obj",
+".\Objects\CUError.obj",
+".\Objects\MyMem.obj",
+".\Objects\TestDB.obj",
+".\Objects\TestRun.obj",
+".\Objects\Util.obj",
+".\Objects\BasicTest.obj",
+".\Objects\ExampleTests.obj" 
+TO ".\Objects\example"
+PRINT(".\Listings\example.m51") RAMSIZE(256) 
+
+XDATA
+( 
+    0x0-0x7FFF
+)
+
+NOOVERLAY 

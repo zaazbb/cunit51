@@ -1,0 +1,655 @@
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 1   
+
+
+C51 COMPILER V9.55, COMPILATION OF MODULE UTIL
+OBJECT MODULE PLACED IN .\Objects\Util.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE ..\..\CUnit-2.1-3\CUnit\Sources\Framework\Util.c LARGE OPTIMIZE(8,SPEED)
+                    - BROWSE INCDIR(..\..\CUnit-2.1-3\CUnit\Headers;..\..\CUnit-2.1-3\Examples;..\..\src\inc) DEFINE(stdout=0,stderr=0,FILE=c
+                    -har,fprintf=printf,setvbuf,_IONBF=0,exit,EXIT_FAILURE=0,snprintf=sprintf) DEBUG OBJECTEXTEND PRINT(.\Listings\Util.lst) 
+                    -OBJECT(.\Objects\Util.obj)
+
+line level    source
+
+   1          /*
+   2           *  CUnit - A Unit testing framework library for C.
+   3           *  Copyright (C) 2001       Anil Kumar
+   4           *  Copyright (C) 2004-2006  Anil Kumar, Jerry St.Clair
+   5           *
+   6           *  This library is free software; you can redistribute it and/or
+   7           *  modify it under the terms of the GNU Library General Public
+   8           *  License as published by the Free Software Foundation; either
+   9           *  version 2 of the License, or (at your option) any later version.
+  10           *
+  11           *  This library is distributed in the hope that it will be useful,
+  12           *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  13           *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  14           *  Library General Public License for more details.
+  15           *
+  16           *  You should have received a copy of the GNU Library General Public
+  17           *  License along with this library; if not, write to the Free Software
+  18           *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+  19           */
+  20          
+  21          /*
+  22           *  Generic (internal) utility functions used across CUnit.
+  23           *  These were originally distributed across the other CUnit
+  24           *  source files, but were consolidated here for consistency.
+  25           *
+  26           *  13/Oct/2001   Initial implementation (AK)
+  27           *
+  28           *  26/Jul/2003   Added a function to convert a string containing special
+  29           *                characters into escaped character for XML/HTML usage. (AK)
+  30           *
+  31           *  16-Jul-2004   New interface, doxygen comments. (JDS)
+  32           *
+  33           *  17-Apr-2006   Added CU_translated_strlen() and CU_number_width().
+  34           *                Fixed off-by-1 error in CU_translate_special_characters(),
+  35           *                modifying implementation & results in some cases.  User can
+  36           *                now tell if conversion failed. (JDS)
+  37           */
+  38          
+  39          /** @file
+  40           *  Utility functions (implementation).
+  41           */
+  42          /** @addtogroup Framework
+  43           @{
+  44          */
+  45          
+  46          #include <stdio.h>
+  47          #include <stdlib.h>
+  48          #include <ctype.h>
+  49          #include <assert.h>
+  50          #include <string.h>
+  51          
+  52          #include "CUnit.h"
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 2   
+
+  53          #include "TestDB.h"
+  54          #include "Util.h"
+  55          
+  56          
+  57          /*------------------------------------------------------------------------*/
+  58          /**
+  59           *  Structure containing mappings of special characters to xml entity codes.
+  60           *  special_char's in the CU_bindings array will be translated during calls
+  61           *  to CU_translate_special_characters().  Add additional chars/replacements
+  62           *  or modify existing ones to change the behavior upon translation.
+  63           */
+  64          static const struct bindings {
+  65                  const char special_char;    /**< Special character. */
+  66                  const char *replacement;    /**< Entity code for special character. */
+  67          } CU_bindings [] = {
+  68              {'&', "&amp;"},
+  69              {'>', "&gt;"},
+  70              {'<', "&lt;"}
+  71          };
+  72          
+  73          /*------------------------------------------------------------------------*/
+  74          /**
+  75           *  Checks whether a character is a special xml character.
+  76           *  This function performs a lookup of the specified character in
+  77           *  the CU_bindings structure.  If it is a special character, its
+  78           *  index into the CU_bindings array is returned.  If not, -1 is returned.
+  79           *
+  80           *  @param ch The character to check
+  81           *  @return Index into CU_bindings if a special character, -1 otherwise.
+  82           */
+  83          static int get_index(const char ch)
+  84          {
+  85   1              int length = sizeof(CU_bindings)/sizeof(CU_bindings[0]);
+  86   1              int counter;
+  87   1      
+  88   1              for (counter = 0; counter < length && CU_bindings[counter].special_char != ch; ++counter) {
+  89   2                      ;
+  90   2              }
+  91   1      
+  92   1              return (counter < length ? counter : -1);
+  93   1      }
+  94          
+  95          size_t CU_translate_special_characters(const char *szSrc, char *szDest, size_t maxlen)
+  96          {
+  97   1      /* old implementation
+  98   1        size_t count = 0;
+  99   1              size_t src = 0;
+ 100   1              size_t dest = 0;
+ 101   1              size_t length = 0;
+ 102   1              int conv_index;
+ 103   1      
+ 104   1        assert(NULL != szSrc);
+ 105   1        assert(NULL != szDest);
+ 106   1      
+ 107   1              length = strlen(szSrc);
+ 108   1              memset(szDest, 0, maxlen);
+ 109   1              while ((dest < maxlen) && (src < length)) {
+ 110   1      
+ 111   1                      if ((-1 != (conv_index = get_index(szSrc[src]))) &&
+ 112   1              ((dest + strlen(CU_bindings[conv_index].replacement)) < maxlen)) {
+ 113   1                              strcat(szDest, CU_bindings[conv_index].replacement);
+ 114   1                              dest += strlen(CU_bindings[conv_index].replacement);
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 3   
+
+ 115   1                              ++count;
+ 116   1                      } else {
+ 117   1                              szDest[dest++] = szSrc[src];
+ 118   1                      }
+ 119   1      
+ 120   1                      ++src;
+ 121   1              }
+ 122   1      
+ 123   1              return count;
+ 124   1      */
+ 125   1        size_t count = 0;
+ 126   1        size_t repl_len;
+ 127   1        int conv_index;
+ 128   1        char *dest_start = szDest;
+ 129   1      
+ 130   1        assert(NULL != szSrc);
+ 131   1        assert(NULL != szDest);
+ 132   1      
+ 133   1        /* only process if destination buffer not 0-length */
+ 134   1        if (maxlen > 0) {
+ 135   2      
+ 136   2          while ((maxlen > 0) && (*szSrc != '\0')) {
+ 137   3            conv_index = get_index(*szSrc);
+ 138   3            if (-1 != conv_index) {
+ 139   4              if (maxlen > (repl_len = strlen(CU_bindings[conv_index].replacement))) {
+ 140   5                                  memcpy(szDest, CU_bindings[conv_index].replacement, repl_len);
+ 141   5                                  szDest += repl_len;
+ 142   5                maxlen -= repl_len;
+ 143   5                                  ++count;
+ 144   5              } else {
+ 145   5                maxlen = 0;   /* ran out of room - abort conversion */
+ 146   5                break;
+ 147   5              }
+ 148   4                        } else {
+ 149   4                                *szDest++ = *szSrc;
+ 150   4              --maxlen;
+ 151   4                        }
+ 152   3                        ++szSrc;
+ 153   3                }
+ 154   2      
+ 155   2          if (0 == maxlen) {
+ 156   3            *dest_start = '\0';   /* ran out of room - return empty string in szDest */
+ 157   3            count = 0;
+ 158   3          } else {
+ 159   3            *szDest = '\0';       /* had room - make sure szDest has a terminating \0 */
+ 160   3          }
+ 161   2        }
+ 162   1              return count;
+ 163   1      }
+ 164          
+ 165          /*------------------------------------------------------------------------*/
+ 166          size_t CU_translated_strlen(const char* szSrc)
+ 167          {
+ 168   1              size_t count = 0;
+ 169   1        int conv_index;
+ 170   1      
+ 171   1        assert(NULL != szSrc);
+ 172   1      
+ 173   1              while (*szSrc != '\0') {
+ 174   2          if (-1 != (conv_index = get_index(*szSrc))) {
+ 175   3            count += strlen(CU_bindings[conv_index].replacement);
+ 176   3          } else {
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 4   
+
+ 177   3            ++count;
+ 178   3          }
+ 179   2          ++szSrc;
+ 180   2        }
+ 181   1              return count;
+ 182   1      }
+ 183          
+ 184          /*------------------------------------------------------------------------*/
+ 185          int CU_compare_strings(const char* szSrc, const char* szDest)
+ 186          {
+ 187   1        assert(NULL != szSrc);
+ 188   1        assert(NULL != szDest);
+ 189   1      
+ 190   1              while (('\0' != *szSrc) && ('\0' != *szDest) && (toupper(*szSrc) == toupper(*szDest))) {
+ 191   2                      szSrc++;
+ 192   2                      szDest++;
+ 193   2              }
+ 194   1      
+ 195   1              return (int)(*szSrc - *szDest);
+ 196   1      }
+ 197          
+ 198          /*------------------------------------------------------------------------*/
+ 199          void CU_trim(char* szString)
+ 200          {
+ 201   1              CU_trim_left(szString);
+ 202   1              CU_trim_right(szString);
+ 203   1      }
+ 204          
+ 205          /*------------------------------------------------------------------------*/
+ 206          void CU_trim_left(char* szString)
+ 207          {
+ 208   1              int nOffset = 0;
+ 209   1              char* szSrc = szString;
+ 210   1              char* szDest = szString;
+ 211   1      
+ 212   1              assert(NULL != szString);
+ 213   1      
+ 214   1              /* Scan for the spaces in the starting of string. */
+ 215   1              for (; '\0' != *szSrc; szSrc++, nOffset++) {
+ 216   2                      if (!isspace(*szSrc)) {
+ 217   3                              break;
+ 218   3                      }
+ 219   2              }
+ 220   1      
+ 221   1              for(; (0 != nOffset) && ('\0' != (*szDest = *szSrc)); szSrc++, szDest++) {
+ 222   2                      ;
+ 223   2              }
+ 224   1      }
+ 225          
+ 226          /*------------------------------------------------------------------------*/
+ 227          void CU_trim_right(char* szString)
+ 228          {
+ 229   1              size_t nLength;
+ 230   1              char* szSrc = szString;
+ 231   1      
+ 232   1              assert(NULL != szString);
+ 233   1              nLength = strlen(szString);
+ 234   1              /*
+ 235   1               * Scan for specs in the end of string.
+ 236   1               */
+ 237   1              for (; (0 != nLength) && isspace(*(szSrc + nLength - 1)); nLength--) {
+ 238   2                      ;
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 5   
+
+ 239   2              }
+ 240   1      
+ 241   1              *(szSrc + nLength) = '\0';
+ 242   1      }
+ 243          
+ 244          /*------------------------------------------------------------------------*/
+ 245          size_t CU_number_width(int number)
+ 246          {
+ 247   1              char buf[33];
+ 248   1      
+ 249   1              snprintf(buf, 33, "%d", number);
+ 250   1              buf[32] = '\0';
+ 251   1              return (strlen(buf));
+ 252   1      }
+ 253          
+ 254          /** @} */
+ 255          
+ 256          #ifdef CUNIT_BUILD_TESTS
+              #include "test_cunit.h"
+              
+              /* Keep BUF_LEN even or trouble ensues below... */
+              #define BUF_LEN 1000
+              #define MAX_LEN BUF_LEN/2
+              
+              static void test_CU_translate_special_characters(void)
+              {
+                char dest_buf[BUF_LEN];
+                char *dest = dest_buf + MAX_LEN;
+                char ref_buf[BUF_LEN];
+                const int mask_char = 0x01;   /* char written to buffer  */
+              
+                /* set up reference buffer for testing of translated strings */
+                memset(ref_buf, mask_char, BUF_LEN);
+              
+                /* empty src */
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("", dest, MAX_LEN));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+1), ref_buf, MAX_LEN-1));
+              
+                /* 1 char src */
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("#", dest, 0));
+                TEST(!strncmp(dest_buf, ref_buf, BUF_LEN));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("#", dest, 1));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+1), ref_buf, MAX_LEN-1));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("&", dest, 2));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+2), ref_buf, MAX_LEN-2));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("&", dest, 4));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 6   
+
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+4), ref_buf, MAX_LEN-4));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("&", dest, 5));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+5), ref_buf, MAX_LEN-5));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(1 == CU_translate_special_characters("&", dest, 6));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "&amp;\0", 6));
+                TEST(!strncmp((dest+6), ref_buf, MAX_LEN-6));
+              
+                /* maxlen=0 */
+                memset(dest_buf, mask_char, BUF_LEN);
+                strcpy(dest, "random initialized string");
+                TEST(0 == CU_translate_special_characters("some <<string & another>", dest, 0));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strcmp(dest, "random initialized string"));
+                TEST(!strncmp(dest+strlen(dest)+1, ref_buf, MAX_LEN-strlen(dest)-1));
+              
+                /* maxlen < len(converted szSrc) */
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("some <<string & another>", dest, 1));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+1), ref_buf, MAX_LEN-1));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("some <<string & another>", dest, 2));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+2), ref_buf, MAX_LEN-2));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("some <<string & another>", dest, 5));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+5), ref_buf, MAX_LEN-5));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("some <<string & another>", dest, 10));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+10), ref_buf, MAX_LEN-10));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("some <<string & another>", dest, 20));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+20), ref_buf, MAX_LEN-20));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("some <<string & another>", dest, 24));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+24), ref_buf, MAX_LEN-24));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("some <<string & another>", dest, 25));
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 7   
+
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+25), ref_buf, MAX_LEN-25));
+              
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("some <<string & another>", dest, 37));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "\0", 1));
+                TEST(!strncmp((dest+37), ref_buf, MAX_LEN-37));
+              
+                /* maxlen > len(converted szSrc) */
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(4 == CU_translate_special_characters("some <<string & another>", dest, 38));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "some &lt;&lt;string &amp; another&gt;\0", 38));
+                TEST(!strncmp((dest+38), ref_buf, MAX_LEN-38));
+              
+                /* maxlen > len(converted szSrc) */
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(4 == CU_translate_special_characters("some <<string & another>", dest, MAX_LEN));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "some &lt;&lt;string &amp; another&gt;\0", 38));
+              
+                /* no special characters */
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(0 == CU_translate_special_characters("some string or another", dest, MAX_LEN));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strncmp(dest, "some string or another\0", 23));
+              
+                /* only special characters */
+                memset(dest_buf, mask_char, BUF_LEN);
+                TEST(11 == CU_translate_special_characters("<><><<>>&&&", dest, MAX_LEN));
+                TEST(!strncmp(dest_buf, ref_buf, MAX_LEN));
+                TEST(!strcmp(dest, "&lt;&gt;&lt;&gt;&lt;&lt;&gt;&gt;&amp;&amp;&amp;"));
+              }
+              
+              static void test_CU_translated_strlen(void)
+              {
+                /* empty src */
+                TEST(0 == CU_translated_strlen(""));
+              
+                /* 1 char src */
+                TEST(1 == CU_translated_strlen("#"));
+                TEST(5 == CU_translated_strlen("&"));
+                TEST(4 == CU_translated_strlen("<"));
+                TEST(4 == CU_translated_strlen(">"));
+                TEST(1 == CU_translated_strlen("?"));
+              
+                /* 2 char src */
+                TEST(2 == CU_translated_strlen("#@"));
+                TEST(10 == CU_translated_strlen("&&"));
+                TEST(9 == CU_translated_strlen(">&"));
+              
+                /* longer src */
+                TEST(37 == CU_translated_strlen("some <<string & another>"));
+                TEST(22 == CU_translated_strlen("some string or another"));
+                TEST(47 == CU_translated_strlen("<><><<>>&&&"));
+              }
+              
+              static void test_CU_compare_strings(void)
+              {
+                TEST(0 == CU_compare_strings("",""));
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 8   
+
+                TEST(0 == CU_compare_strings("@","@"));
+                TEST(0 == CU_compare_strings("D","d"));
+                TEST(0 == CU_compare_strings("s1","s1"));
+                TEST(0 == CU_compare_strings("s1","S1"));
+                TEST(0 != CU_compare_strings("s1","s12"));
+                TEST(0 == CU_compare_strings("this is string 1","tHIS iS sTRING 1"));
+                TEST(0 == CU_compare_strings("i have \t a tab!","I have \t a tab!"));
+                TEST(0 != CU_compare_strings("not the same"," not the same"));
+              }
+              
+              static void test_CU_trim(void)
+              {
+                char string[MAX_LEN];
+              
+                strcpy(string, "");
+                CU_trim(string);
+                TEST(!strcmp("", string));
+              
+                strcpy(string, " ");
+                CU_trim(string);
+                TEST(!strcmp("", string));
+              
+                strcpy(string, "    ");
+                CU_trim(string);
+                TEST(!strcmp("", string));
+              
+                strcpy(string, " b");
+                CU_trim(string);
+                TEST(!strcmp("b", string));
+              
+                strcpy(string, "  B");
+                CU_trim(string);
+                TEST(!strcmp("B", string));
+              
+                strcpy(string, "s ");
+                CU_trim(string);
+                TEST(!strcmp("s", string));
+              
+                strcpy(string, "S  ");
+                CU_trim(string);
+                TEST(!strcmp("S", string));
+              
+                strcpy(string, "  5   ");
+                CU_trim(string);
+                TEST(!strcmp("5", string));
+              
+                strcpy(string, "~ & ^ ( ^  ");
+                CU_trim(string);
+                TEST(!strcmp("~ & ^ ( ^", string));
+              
+                strcpy(string, "  ~ & ^ ( ^");
+                CU_trim(string);
+                TEST(!strcmp("~ & ^ ( ^", string));
+              
+                strcpy(string, "  ~ & ^ ( ^  ");
+                CU_trim(string);
+                TEST(!strcmp("~ & ^ ( ^", string));
+              }
+              
+              static void test_CU_trim_left(void)
+              {
+                char string[MAX_LEN];
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 9   
+
+              
+                strcpy(string, "");
+                CU_trim_left(string);
+                TEST(!strcmp("", string));
+              
+                strcpy(string, " ");
+                CU_trim_left(string);
+                TEST(!strcmp("", string));
+              
+                strcpy(string, "    ");
+                CU_trim_left(string);
+                TEST(!strcmp("", string));
+              
+                strcpy(string, " b");
+                CU_trim_left(string);
+                TEST(!strcmp("b", string));
+              
+                strcpy(string, "  B");
+                CU_trim_left(string);
+                TEST(!strcmp("B", string));
+              
+                strcpy(string, "s ");
+                CU_trim_left(string);
+                TEST(!strcmp("s ", string));
+              
+                strcpy(string, "S  ");
+                CU_trim_left(string);
+                TEST(!strcmp("S  ", string));
+              
+                strcpy(string, "  5   ");
+                CU_trim_left(string);
+                TEST(!strcmp("5   ", string));
+              
+                strcpy(string, "~ & ^ ( ^  ");
+                CU_trim_left(string);
+                TEST(!strcmp("~ & ^ ( ^  ", string));
+              
+                strcpy(string, "  ~ & ^ ( ^");
+                CU_trim_left(string);
+                TEST(!strcmp("~ & ^ ( ^", string));
+              
+                strcpy(string, "  ~ & ^ ( ^  ");
+                CU_trim_left(string);
+                TEST(!strcmp("~ & ^ ( ^  ", string));
+              }
+              
+              static void test_CU_trim_right(void)
+              {
+                char string[MAX_LEN];
+              
+                strcpy(string, "");
+                CU_trim_right(string);
+                TEST(!strcmp("", string));
+              
+                strcpy(string, " ");
+                CU_trim_right(string);
+                TEST(!strcmp("", string));
+              
+                strcpy(string, "    ");
+                CU_trim_right(string);
+                TEST(!strcmp("", string));
+              
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 10  
+
+                strcpy(string, " b");
+                CU_trim_right(string);
+                TEST(!strcmp(" b", string));
+              
+                strcpy(string, "  B");
+                CU_trim_right(string);
+                TEST(!strcmp("  B", string));
+              
+                strcpy(string, "s ");
+                CU_trim_right(string);
+                TEST(!strcmp("s", string));
+              
+                strcpy(string, "S  ");
+                CU_trim_right(string);
+                TEST(!strcmp("S", string));
+              
+                strcpy(string, "  5   ");
+                CU_trim_right(string);
+                TEST(!strcmp("  5", string));
+              
+                strcpy(string, "~ & ^ ( ^  ");
+                CU_trim_right(string);
+                TEST(!strcmp("~ & ^ ( ^", string));
+              
+                strcpy(string, "  ~ & ^ ( ^");
+                CU_trim_right(string);
+                TEST(!strcmp("  ~ & ^ ( ^", string));
+              
+                strcpy(string, "  ~ & ^ ( ^  ");
+                CU_trim_right(string);
+                TEST(!strcmp("  ~ & ^ ( ^", string));
+              }
+              
+              static void test_CU_number_width(void)
+              {
+                TEST(1 == CU_number_width(0));
+                TEST(1 == CU_number_width(1));
+                TEST(2 == CU_number_width(-1));
+                TEST(4 == CU_number_width(2346));
+                TEST(7 == CU_number_width(-257265));
+                TEST(9 == CU_number_width(245723572));
+                TEST(9 == CU_number_width(-45622572));
+              }
+              
+              void test_cunit_Util(void)
+              {
+              
+                test_cunit_start_tests("Util.c");
+              
+                test_CU_translate_special_characters();
+                test_CU_translated_strlen();
+                test_CU_compare_strings();
+                test_CU_trim();
+                test_CU_trim_left();
+                test_CU_trim_right();
+                test_CU_number_width();
+              
+                test_cunit_end_tests();
+              }
+              
+              #endif    /* CUNIT_BUILD_TESTS */
+
+C51 COMPILER V9.55   UTIL                                                                  08/05/2016 10:32:31 PAGE 11  
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1457    ----
+   CONSTANT SIZE    =    216    ----
+   XDATA SIZE       =     12      83
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
